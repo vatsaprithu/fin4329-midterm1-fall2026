@@ -267,7 +267,7 @@
 
   <header class="banner">
     <h1>FIN 4329 — Bank Lending | Midterm Exam 1</h1>
-    <p>Fall 2026  •  Chapters 1–6  •  20 questions  •  80 minutes  •  One attempt</p>
+    <p>Fall 2026  •  Chapters 1–6  •  25 questions  •  80 minutes  •  One attempt</p>
   </header>
 
   <div id="deadlineBar" class="deadline-ticker"></div>
@@ -281,13 +281,14 @@
       <div class="info-pill"><strong>Exam window</strong>1:30 PM – 2:50 PM Mountain Time, Tuesday, October 13, 2026</div>
       <div class="info-pill"><strong>Time limit</strong>80 minutes from when you click Begin, and the exam closes at 2:50 PM for everyone</div>
       <div class="info-pill"><strong>Attempts</strong>One. After you submit, you cannot reopen the exam.</div>
-      <div class="info-pill"><strong>Your score</strong>Posted on Blackboard after grading. It is not shown on screen.</div>
+      <div class="info-pill"><strong>Your score</strong>Shown as soon as you submit, and saved in your exam file. Grades are final once posted on Blackboard.</div>
     </div>
 
     <div class="rules">
       <h3>⚠ Exam Rules — READ CAREFULLY</h3>
       <p style="font-size:14px; margin-bottom:8px;"><strong>During the exam you may not do anything else on this computer.</strong> The exam records the following:</p>
       <ul>
+        <li><strong>Safe Exam Browser is required.</strong> Open the exam with the <code>FIN4329_MT1_Exam.seb</code> file from Blackboard. It locks the computer to this exam: no other apps, tabs, websites, screenshots, or second monitors until you finish.</li>
         <li><strong>Access is restricted.</strong> Enter your <code>@miners.utep.edu</code> email and the access code your instructor gives you in class.</li>
         <li><strong>Fullscreen is required.</strong> The exam enters fullscreen when you begin. Leaving fullscreen (Esc, Alt-Tab, Windows key) is logged.</li>
         <li><strong>Tab and app switching is logged.</strong> Switching tabs, minimizing, or clicking into another program or another monitor is recorded with a timestamp and how long you were away.</li>
@@ -315,6 +316,12 @@
       <input type="text" id="accessPassword" placeholder="Enter the access code to unlock the exam" autocomplete="off">
     </div>
 
+    <div class="form-row hidden" id="overrideRow">
+      <label for="overrideCode">Proctor override code (entered by the proctor only)</label>
+      <input type="text" id="overrideCode" placeholder="Only if Safe Exam Browser cannot be used on this computer" autocomplete="off">
+    </div>
+    <div id="sebStatus" class="info-pill" style="margin:10px 0;"></div>
+
     <div class="agree-row">
       <label>
         <input type="checkbox" id="agreeBox">
@@ -330,7 +337,7 @@
   <div id="quiz" class="hidden">
     <div class="card">
       <h2>Midterm Exam 1</h2>
-      <p class="muted">Answer all 20 questions. Questions lock when you move forward.</p>
+      <p class="muted">Answer all 25 questions. Questions lock when you move forward.</p>
       <div id="violationsBox" class="violations hidden"></div>
     </div>
     <form id="quizForm"></form>
@@ -367,11 +374,16 @@ const ACCOMMODATIONS = {
 const STORAGE_PREFIX = "fin4329_mt1_fa26_";
 const EMAIL_DOMAINS_ALLOWED = ["@miners.utep.edu", "@utep.edu"];
 
+// Safe Exam Browser lockdown. Outside SEB the exam starts only with the proctor override code.
+const REQUIRE_SEB = true;
+const PROCTOR_OVERRIDE_HASH = "41155ff81b7fdd724e833d61ba043df03fa589ed191d5e691b170eef040c3685";       // SHA-256 of "mt1|" + override code
+const SEB_QUIT_URL = "https://vatsaprithu.github.io/fin4329-midterm1-fall2026/quit.html";                  // navigating here closes SEB
+const IN_SEB = /SEB|SafeExamBrowser/i.test(navigator.userAgent) || typeof window.SafeExamBrowser !== "undefined";
+
 // =================== ENCRYPTED QUESTIONS (AES-256-GCM, PBKDF2-SHA256) ===================
 // The access code is never stored in this file. The questions (without the answer key)
-// are encrypted with it. The answer key is not on this page at all; grading is done by
-// the instructor from the downloaded exam files.
-const ENCRYPTED_QUESTIONS = "2TMrMjNnDhm3Hk9W6iTNXmN90KhO88IjYhtEGrXAJpnX2VENUJThOMee8D0v4ZyaZmBQbHqY5DjVxO6KmebvjYT5XTlGVblvkOeeIzYQjpjxtVIrF+5oM2u0rSECRd5IUbtTTliW/bOLsNXKLa88i+aMnEqoafXdx2vMwQuNBOh9p6IqS8nH1b5CPU9E0piXHrtoW0EzEXsOhSbBgCTSWJ0xMzs9HVcGCAtY+vf6nv35Jpn/1Hzam3e0BCYaiD0yc74qH8QGEEzvJyp5HdnCmucjUdZNcy8/FON/ECVQ+fbrXXP91phsA3xSNrEm2kr7WZqlYIcfCm1XipOSyf/6vv2/yId4VxdajayVVu5nDGBYswZGK0faQE1wFbvNaiTvuMFX89PBytd9e0DmjEYCQJCSd/fWXzalocbdWCc2evDLvR0g3BDq12osnajvsnv8+lZnrcd047r/88FB2QAkHUG+BPlnmcmdP9CrxTDtehhMv1MrUCFMF9R5GAYRtqR/kKX2i28qPlqntkk9wooY44WhSfMwZW9U2f34mJazqWD5zcN514dkU3GNKnpUY2h14rQ/yfPdXsEj2UcIs4Dt7KyDKd6wiBw4PNlKMNaWv+lzxpPkRa8YZ+3Gkq6ejhJxldULhjYxA2IGXFUAA3zF189h+o35eqzsda5n9IwM+3y0cjViok5Ueb7M+SSGpsAGc61VyQtYXWi0ARU2hZpbQeQUsKUeNI9tF2NYIvvv71oIaClHs2FXCEAqD4EhxsfVQ1va+gj02ACcHj7sQrmtlyeuP5bc6fC0HyJ7N4TdiW01YRMfOGIK+O0TmPrMMmzlT0sm9B1Ha6MaAuvwT6/9xrzklqa5USuwzS2DF9jJLZCHY3owvkXztkH2qpt9fU72y9lZImL8y45uIMs3RDmz6oZh84etaOdKbI60a9WyT+45wN5hPFkEd8Zfe+qMJQ0Lm5geXND8EPjg1SONPDeKsN5ZZEin4vC6xmvXYVpfeGWjYVwmWBG4FyDdQquT2LA0vOEXl3Lf51kHYEiQdMBsPZoW+MbNZYSYbSvYQ1ul8wAuC62aIjmyXBhNz25vXZcUi67V578bpYcbH/SIz37xh2OTAua0vWL3s9LBJlOrVCQIZOlbnjZ0crj7TQROlrjX8d5gwE+9J8QmX6qFH6xpNpDat/2fZXy0m1eMPrYk0CCETL5j6B6OMP4bojOgJB/fsF7qM1CkfNdEy5fQ1HYjYo58CpD5M4voI6ESrpYWXm9dJ73dHTRS78k7OJHiHFmNJjv2i5V1YtNxq6Kup5iZZszMlBS6YK41TxRimrH2cmZJ5o5JHpW8NAXh/YH9o860qPq7/DBfpb8blbXtZ4hfGfIPphH38mxic2pFuZUqE96iSNl09uzz1ekDtQdl7oi9gpGCNjgEl6+y1gAysa44ssFfhvOJlHMUWaG6KZ0fJSf6a6FoIwAa/FN3HB2bFuVh1ZDrddTuos78q6pu5kHXxIlzXxsf/yBtZLavEAfgFRaIfZWYrmuTNTU4L/FRe/HBcfPf/E6O3ZM3WQBc4u1UMJptu0QwDotMd/fd3AE8C4vSW0ZKrIvvJz+2fuGnnBN1u0CKZFb24uOrjY+HTYvE0Jg7qt4JQKgF4fxoNr+wqTmiJvkE2Wc7gZgKWOkjS8HEHIXjcu8vqMXnn997sa8s6Ltq8ErkZr8dF0/cO7l5K4r4IRvXaLJbv2/yx6iIf1xhKa+BrOwAMEdz5otwlZcaiODLDtBvMwE/tMvvm/PJRMWSaKWKMqM/OxZE/qQX/FWLbdDPBhpmibEgFOPxDMAOyQ8BwlTGTegoI7KBg+V/mHyU4Tycwkpmy57goK4vn3A4p9PvKPQggKv4J5OKkk0WHdfTfGkbpyI7DmL965ex0BP9yF4GMiyGYNQBDmQ9pLlmPhVMHBDMurfhvh1VJwmJ/muswXWubd3frA0/Zn3pvKYBO7QUg3kaTZjR4fEMDrLvJhx3edyNKbPRRa2IK5swb9BAqwwoBuDaVqefFDZqN/QvhXco1kexXLpk5ywJb1YGGaKK3kX+z37BpP7tpgccacK1mruYlldmY+p8ybymeaSpKDpeWtFyUAv69o91Y5XWr7FTHIn3OocXPrT2otMhqowRM/2fFo8QWSCzCc4qeuu9TPJnD1IeNIL9BQRnzQJtqmy67cJKsHnE4YGUos6EFqsZB2ZimTID6D2mes+IDmeXso/COfr9zRXjfVr5qoHQY1qeAFt0jkEeIzK6bT4v6SUd5tEMOj/vHkAaUyUuhIAfScGIaY+z01Thgk+jNBjXyjeP7UHPdYvNOH0dhkBfwyNlUDKW/HtmNSpYoDeM6dyMoIJrfplQFoOQ3VgzBhEX2FAwRAU+BQcxAUSrCeOQ+/zSyKe20p4CPBiv+whN7LmX+2nFNNmuEvkIFFqo1X+7pCn6swxbNr+MjYSIEADaKxuO6ss6GWqExnspIIhDfgKIGsl+7Xe9jcNiN6jKErP2KjXyIKrNjOZAQGjdXIzUL1wed9H0kGGA40OJ1OlviVuvgqd1gy2ByMocM+Lgu36nXO+XKuIJE6uu/3ixjco2x+V8cPmQ0XByOM45DqJxAZoq2W+c428yuo5ZN2LzPepjihZSICbP88wb6JTBtFRzT7+2ApD4nW08d3q9ROw0vF3OlbmMmuzuJNHtB0UGzvVylX/G4QodSU3L9psgLTX8T9W8u6WgjCqd+Um9Ovtigx09sLll3GLNAYpw50LXZE12rxMHteBbntN/N5PszGHCJO6nniV1d6AyV7rhIgcTCQxA0pTBIZQLe5mjZKLwr7IvwBtJkEVw+BtSlWOhKXVRoHNZCf4eNKe9PEMaEjTuHNQZ8d97AuZn0UMwWOteEwwKNB9Ft78Uy/eNQg4B6LZUbqq05+k+E/nPWwB1nGXMm7Rp3kEZ/PMtt1YXpj1O3nbcoMBlayf+gbMzUWdJZIJIpw9zsw4UZ7xGmIbyWXY3z1XOLzKTyE0kT31aPDtHAS2sw7D1EMWpsdOl1u6ErRIK/5lZhuP11yGQza7GKgwgfxkINNwGECdX9OG+qANBwVgt/vXaoSJedJsOdaZCnvQGI3LzwPJ2Z/4iLO3obFF9PU+DxXY1/a4LyUBqZ1tjOCfNsOUGwT8bzIucEff+NE3Qdhc3zNbzs2EmJVI9lUw+33RvU0Dx3jBx11lb58hrrzN/GR44+uQU/2vCgdWmTRtwdFnoCcHRDgD/avZ+kHjOkc07r9temwcuOeBMRyOQFCfBUNuU6iegEdyDZfSVEr8Qh3qBQu+6M33bDqvu5Dla1P66Gv7Iez3XBYwgWo9dQR656zwQRcNMdh23M9/uK6r2cTou0aToj+Sy537qNvY+V6SVYKDglNNGPF/6Iw0jppKBjWYp2G8BTeWgzN9J/4EslA7P2+F0ffaEzyFLGsBTZOFJ8+XMw2YG32QK5DNxkrhQ7+Ulz68j6DVZdU+qrq7+CbWaq8RBsIVwdxbto5jASqbAlZ+Irb5ql8H9BWu50rZsx7R8lmoRwwqknPPhktPmQqV5i7Oz7IuEBxVPW/LXBRvGcn7DEZtzJ58ipTunWOlfGIHqH+Z1xLRCyepUG4V8lkUBXJOBSkOolNdFp4fxkNBUo3ObiWs5ip/QhEPLxFQ2vjjwa7OxItbRVBzfBY5/kBcKSr7Uu3OY7YAor0qJ8l1oTyjnqCUcUGOttUEpxdpM204kpQcp/cjH0XCMgCFxsnqA13HOr0SeuWOWewYHIcD1yORmohiCxY09wS2lCbqlYAln5NbHzLIWHG7JnZDOHtI8cC58+/AMm6M1jcWKtBvV7HxLLPAETcqH9TQv2VDRe5fHRDgTOQymlF8ynL4yXC4DuYXW0nwfREaMYtZI1On5mSRvZb3auX0AijokCym/D2PiF4m7zyvNQgxh1C5DN8vojOmD1nqoEEegf/XvYkNz9Q453e++++2nGKrIuHyojngVm/GgW7YQhsWWksfV70GwC/z/npQUnTotsTmu40Wy3rxsbbA4hmAVH0msUqTQIZtKlXDcTLOJWGPl40KcG9qC0PIvFd+/wBOyW2XylcL2OWH6cXf93XJuzy3ZG+0jVo5fD/AKPCY7QYNL8qT6rnkiS/d32APyWN/a8wdcRQGyzQ76cr4GFSaUTJAGi4bE7+gDy6DDW6s7VPbwHa/sqQPTDmcVG61b9NCvKUQXf/5X2IeljwexQyTKMuyLM65DwwXtblhIO0rq8h2wJnRGnw+UdwQUvrXkU7fJuDCMMNYpV/GMjUmwPp+LEhzGUxazWbOoAJQ1g7N/ZJO8GbafcqfQhk9hO6IZaW0LxEBlPobl3XUirQxgAwtArKEEwtqK3XrTzBhD+eQA/CTMFjW/WkyAxoqhB2RS6xRJLK43+6Rok/uNrTGNyUsruJB6YEyd4r+z6nvn9M9jSxsAEZwtloRH+TvAyWjeFSFVdtTx923TgB1uHDZlUDXIqGuDwusB5MUn6jPdvMPY5OMyqhtOVYkyh4dmXORgyViSb0mQmFhUcP/cbgy0iHY9585ItNkwIeenayR7HTJJnJWJq1+TzPfGJf8Yg0T0nWTUDfbCW5g/6rSPr6kwR+TQETEr72xaTEYK2ZfTBZ/LaciTT5+HEyFUBxuUFnB1gUKk/Dl4T5nkxMufvYhnJvxoUcplr3LvHkBRqfPV20AwgRLF6ENDxf3YSg+VZcZl2NKUQ1nO7uKrqN0ZpTFL44FqTKVIWCB9mpTGc1tH0hRWGdMSFh1Z79EIt6iCjFLqTBJoSbjOZoO8sEk+qLjvm6gftWs3f9h+qR27WGFZpRsqMmwuvlsM9KBywJX9lHLJ8iwsRPo6U+pzgDJTWo4MDqs11zqbPvFGu9rLlbGdP0g9ZlIq1XS+5h5xfdqdzfoacXN49sMt7lrPJ47U4NKotD99q8Pdg+19rVGJY3ESRQlemcOafyl4jYXQHlDyMF4X8osNLRtBl4C7JJ1b7u8AyLxhN66Fp9D1lZiejoKJc+J1cRuJMtUI/S3N7YYc1xQEr6DW8cUJe7HoqcKaKD/ILYhOZxEB2OdEGtP3+ulhAtqwx5XCJ26Ft/tpcNzGmnwqEWCWB+Er59h+vdIz8czuPAlHsyPoqFQKpltGd62YzPlStE3vzl7vo7/dw5pKQVQnxCfe4BClnu0r2WrwuNxKMqUkbQBFXqYADTSeIQI1CnZ0BHMbUpRTzinnWHyCpBOG25Ax96ZtbnNsI4fie0iZjxzn93CRStcrH97lFaleDMlssRn/sRbsUOlPlTzaLHmcFGSY0/aIenFlPzIQCOS8gXaG4c8qUssKm1wgADnsXFKHoUyimei3/3BtWJCCxL0n81TWCwpd1NZkxlpek9Dd5v5v6sTv/xkDQicjgW9duZWd9IfjjG1JmfG4/40qXxj4F6XjzI8qFPP9HVK5soG4Ke3JAsjYop9X1NBoQ7uz20nLFCPKnXagt0x8rhg+TNbrLjZiAu0C0nI+E5UuFjBe0iV+T83XehsDuOIEGmlu2AMCmmWoBjvw9JV+tWNxlK7Fns8266BrgWJTaBHNoZyPHkfA6Dbh9+E61Z/KGAX4GrWl1FR+AAWbk0t7LlZELuNhulm1wezwqKBY4h5K/fkdHYca20TUsUQUGhrmOwBvion1i3gaYyBKP51ysUx4DNFMaIxGwXnb4ugBaUEozqTKPJ2bRJShS434dcUDwwdMF17KUFyVQ52WHrFoWizzmw6ijhUf85mQwmy12xf4sUM5hSEcLtn/6ZlthUKC1r3ilfqFgf6Mu8AAjSBzyHKdFXMySzRXa5ArvATWOvdGTPCZ4PuNnT1H0i1lh2KEsucNuMl8Gr5ydDQT69JtqB+BAAaNSPbyXnVS6UPeE4HGddlyNmEN1BGqYsFYMRmSruS5OHVnodcuzqLlbrAZevPmhI4PGQlRNVAaJ34uV4hYdMjyAhebUbuytoSMrTTcJ6KMQ/ArjVcKnllDyl6XeCrzIyXwMTtsX00l7wawfeVcMoA5os7KFZ7QTt1CR6K78adHhitbgramxc4wBbn/3/olNzAf+Lge66fZrF6dTuqgA4ZPtPG0Ehmlw7BUgBo2CQONyOu4JG7lr67tTaj2FXbiCErVuxIuPRn+xq+ZrpZfsWpEeAD9JWatGhfm+ww7s9w8EEfMVicuhLNhlHIc8wifsYp+HcLz4HBPEMivx9BlkpHhGGKKn5AcxCUNxSP1ukD33KqIKUL0h1MmH+jdRU/fX6PHBNp7bHcaDSEDQ0C+M0vSg1q6hIyA41xfIrEkfoRvhHsjc5FTp98h1sf06TokzBrwxGuiozMAHHn0Kgzfw99M6PQq0WfhR9f5cKwFyLFHHh3SlwXIPbOUSmGF7p059gkBHKUC5zimIxIZrQP98fq0iCZL7zTQdu8or/hl4Vy35vpg9b9G+Rl2JH+YbJxWpncoOkS05JrU7hsLXxEpVdnggljzHJxNU0uUuAjjlmonZTi+DzdgTEIJymo4Qv2UDlF+1Vyu61GRyc20TCEt8zFV/PaX1nBqrGDcdvSGUz3m/8dhY8+ZgcvRFAdFaFxncFXsWr8fBbaXyaiMtqJzfW9kP6bjx9+d7R33QsQqf11eHlcKOEDfWZyPL+45AdvKzdxKR7ohQDzTy87yCxPqzezcr0VOoNa2gQ6OvbI63Nu0SNV/FfFVRPZDeq+IULB5FX87Q/wEA0dDASO18RKLqaZfwR9buPknn4LDZUYSH5Bdwa8b1xzTheahNalQXJTp1uEG6CU2/o7m5L6EHV2mMPcw4uxOFDOlYkfMa1dwa+Ez0CXeTvUjId6rMA5gEKAn36ktS0uevz4ZbjcqLCRWroIZ2A87aB7dsW8/6+8J7gsPoT9gNxtN3j4bdLraBHSQwC/adp8jZOECSlorOl0Oek9+ll9O8F7dzlsRUfnjs6d/XWoN3ZaKpuiCWkvkpGrHdS0OC3i/YU26yu7e/gTa77ZCY2CNS7rHgnO+jT+5FKvv1l+qMBRy2BgiHkwALwM3cLZau1h1y8/F+tF2rNbJmOoIWyQE4eA2CHP0j95jFjh0UZA0/YiMX3vWp4vqfj1BbB2YjtrKSRbqs47OuFfVSpvDZSrkJ21njGmqKFo6DzfpoxKH6e9E6XrxR4yMgASAEhZnqOQ4eIXEsU4a6O1RBW1ZDjD70lmpJ6wAGzaVpq5UYT7pgmgsE2a3kt5MdG6SDEXe0G2xTGdp3UX3VPm4Loti4LQNza6MaTJZZ8BdgxNiIIzGQMtcxwR06luFYwot9nboTuQqthZm7k0v+kW7TH9yscbJbQg8yhgqEIT//sgkTAVlJo3Vy9cR+buFKWH0aLUJsy8cavhQOgP6Tyn4llb1gOh10vkO6n6oa+z/awh6aMEEbvtHq/A7KXlsxmFJ1dOM8hxxQ7mBXEmu7RQzfC1rvh+LpQNOUz32VQ/0FW6ZWDryMmxzMgOaqpsTSeKcvuO2XFE80momycGPG5ISX4EnZ+j/yNBx1f2G1VU2d11qCq30Cb2TZvrFB0PIfjqenvlZn6fJkRfA9jd2WtKJVI56LE+a5s2D4ZPIZ08B94RcUmQ0rVeZg6N3o8hrtwcvQJ/uNl3/eQ9ParJNNLXikShZk9lnjBWO71AkO4EN6wdADEovt4AnF/nmuOitqjYt9o554AFYdKV2wZ2PDpO4xBneARa7W18swrv8ZkfLxT9pUHMwKLBTwh2+WOan2prmkkW0O8dFUYGxTbCp70YxB4jPaUVsmYtMaD3rGqbVts0cWGidWNWNgl10QwknU8JmAhZ/X4JkwPddEIzLI7o+u/zjZCBuXSI4PlDTH6kKXLRPOivUG1/OrVbG/zzv3S/pN6J/71dUIaov0EP+wbumu+vhUG4Ioe/NCMQg3QgJ7E9NPMWKuuAjHLVH0AWX+nqp5901Z/OpcOMiNeB/Q7Z8UGZLwbmJ2AEVfk5K2nli2tnHQnaCNGnbFu/dYLxS6Si7OtnMMbEqw0pfU5e6mMVKfZBjDjZz1DLuenDJbXcLjZYu4ZUpOdlJKnEMWLJnWukhTiHVzoXz0RYaEPTXIWBVGf4Ali4FIddwcykXJFhK8EZALAcA91bsVv4qTKFIewYma4iVruunbr0zMIghMWs9Zf/DguJOy8ZHwAZ9UKikh66CIO4RiJFDB3e77kXZUHWyk5PNaR44IhxUbdEEzriyk93nyEzGEH6nbNN91l1VqgGtXk2PqgGtbzKisjXDabog1PA0OPSC4CBXClYh7VqK2TR7Gs8zqyt9Y3wtXIXYnJnmDhkN2pK/6D3PuIQ24+aP/MOy3RTB3Ho1Blzk2QVw3FQ5pMpW2A06IKAn5SxgUqHzWYrl9TExlHHpzYPE7szlzaD+NqR1hB9AIf3k4eMoa2ldLdyHsCiTmtr0bFcTAiRa1da1eAKqEXGHMWcNGsGszYCBs15iuxEY2Bm305ie3HYT4IIMZv7QuGD6YB/QV2Y9uaIGGbhAlxJ64CbMqIcHR+EVVHs0jX03lzgnxCVDpLN1mN7g6lsws4M24of9RYg6szKFoSypxnnbPWyHg2iudup+T7UOww+/6gqBHZYYEe2/MIxtH7uLKfYgTH1aSupCm5vdQSTjDW1mgZ2erAIO4s3VMLv7YpBqka9dDvKwW7AXLv4uqoWmiViXHopYqjBn2A8IbOLWuPYcT8aR3jQRL2le7EJIRvfzpceM8ijOcgdCgWxK3884YqYqxRO2kNu8GXe1j030ES7j2xqg6G9Y2acJ1Y5PcsQZCrUSCqGsmqiXVWaL2nwV5lBt/zz3/rDlIcrqgSFTdqYdvCDPCvQxsCajar4+dUW9blOIu3kj9L564R3xNoaLxyKorRtTHVji1Cy+fT8Az8ru34FDeM8TCV8DvVemguDY67cI5Cvd2Bosw01rECCbKeYwsV+qV/JB6CUOKJiFiIOMVEZ5fHw6UOfPvHsEIcOhkoDJS8qirptYW0RYUeTf9mTKJeceo4UOc64DdUe0e8K3BbTnEicprS513L0BsDrOVvnXaF4huaY7HKmkN8+6Tx9UstAojKqIJ5bxdTj3Adcdfso4DZCcWNjcxTn9FLOgxy4efjeL41kArsXKP0q+i4UDLOgarOagr9VP7F53YfnEGjs402HWZBLmbOfYbx6QoMr2HnchRMtpkrSiGEhHyu6mehX4AQghZD6mC9PemUUgnIukweEioFONW5kyCLm7JALe+xaOj8y+jX4KZFKCx3tckErqUcv1YEs3PtZ524BERahKkWrNxKaZ5PhSKhjPs5j38do0eNfuCmkNVqI6yB58BEcwAXxVHZz6Qef69Kh30IJGQQK/tixLlTKi1D+Cf1OSAPh8OZYchlNaHLPXweOJ6SelYqajTBU4iTWTfGMHtFmBDiPnwItbMsk+rarE5gNxNcGQZEvQA0hYCIJgBCIfRbaC1FJ3lCFPUYUpi0CpC2k1hxoAoYsky8Q99XBxCnf26/MVPFTKPCD2KEpJDwH1KUkmtZR6FoF7ruLuh1JFnZaxRqFVqBm3O057G6D/j3KHHANfvOLa1+MjfPbBXJpVP7sA0XLUJOH3NCFO+6CgyiDC4Yf99rqUdfYKCkBTCqQk952nK4gp1O4iGHfKdPSXT5fkTJ0xBvNChpM2UDIpY526hTODlNJAHLh8pQ/S7l54j6sN6ufWjuarS22VqhCgJcpK+LdYEBO+P79cnKLyNciuEUymQBTM0p2ysPFLMUpAZFLHN7EpmeO1UPrBnpc3f6pUxpekLBDOzG/5k72O9Ec2VV8KqId3ZazLJDGvFXqyW9FRykkn+ujbnQzw/wih112OL86xSdOipvrliPk5c3iHWswdK2AvZIs6KitKoeafsCA1eh0hBZ7vadoHD9+ZhupX+GqfKGjBHm+7TfJvetL+A/84ZC6+ZYIfaMGi18Z3TSTnj7AOtaCg/OAaTzJuwFnUDkGZ13uIUofv7OIBDEGcIoYeZrX5utJmH2S973jVcgm6LG84nw5WID4TzRyc/5UGWqPTdhcaO1N9utGDqM6LXKveBbhY+X1OyoMU5r60UwKOCAJLbNVl0/r2veFyMoIOd8NwVqgI4N+ud2asTjBCQps4g8D4xZRmlFjx1QRR0YuOeM3HzSNPRp1ZD4Lav2KSnKJTK0IxO3m0qlEiM5qi1oOIVgA0dL1XOvlP0kZ4dhLqm7d5yf0NhlZA/mq1l/DOgks8KzBHXTz54Lgk/i/5qvd+iUSs3nh36YRFMSyAjQdOGRC31m0GdCshDbZursvUGLvYsXcsk0GDGYR3ZoCtrqwzFkBvIUpZAWr8EWN+md0wq76xn5wowKWAGVd9gOrJCu/Hu2pIh9/4nk6fPTt7EtYdacYqMaGPt+Dtw1HVfSikFDU7uKGB0v0GtyxAnwJPt54dnhw41SO/7pBX5bSLBcx9egU7skAy7AIfA0ejFXm64j8Hc4LXkObg+KAOnP4lUq+kQSfgAMn7dnym3Kj0iqCgcVHkgM69ZTI7aRykKCyYQLL2bC+eVNwk3zi+2XYsTr0kNBeRZpMwpUQzhxEc6sNqpzcaog8FdE4Qxa1f3kiZBc+vGJuO5YHfcF+VDjpiYOZ0dvPvFgf1pzszFwV0F+fQdBbsVu4fjYgU+ZAWHQClS55vMotMXUdt7yGAfAUF6FPIQkrtRYJpNqhm9UkLBK+lt6jqO1SuUHBW3WSyDobqUHRF66+GUJyfXi6rUnZmLNKIc/1so4igw0XTAAiGr72J9sxygG3FgqjsKm73QkMCeW4DOCry6qRZjgq889XM3nppkSxy4BqVS2jEHt1kJrzOYvd/fbTCvNcJ+HKiSG4xPqXE1MeNolu80PRAXAd97JJDCSe+8TedYLOaLr2Gar4Whq5FWXlyBI2T/NBb9KSxtLd9CE0mHXBNL9GwBGJEBbKwGIEMg+MpboFxbyUaOL+3q1Js/SH96aoUE0Bag2uNy9LUr3IdByMGrg4a/78x7LDtHYsQ0hbdsvELw7gDuba31GJ6Xq7uaquE9P6D2Zihb0nFQQrFMXkgpkenwu9momskdFXmn3EjnVGtnjXEf2A6dI0bdxjRt35t3+NilBZsijVH1XLrCu0ogoUamdmYvy66ZBI6cxUvf7Yd2/NEBmvkl7hZaLjD8QtXolWTlbBeZpPEGHid82FW3f5XSTxppweLl/4bbW2rMoggntCxmZCI6969sRa3moSk0vH1VOdnPC/1uyBlA5TEPq7c3cnOyM35wcOSa4sqwRcIn5mG98/dPb63Ryd/+swdIyCVrZZpYRkN3aYnSml8cZG2SjNVMt4ShHkUeP0aMLAAisWYkS6+J95SnCzRwEFL9yzccVTstcZ5BYQHycceLujKdTgsqIxlE1fxoIqGdlzd7Ofneon+pF1qKNN8Y6vTD6+0c2DGmYVvYJOLCHN/+27eozRwvNeO4Y5rmnMHniFb9EZSIhFhNQi1QX/pd1C6PtnbwVUqIh92VKOwesJTgnwgcyE9SPSAZMmrIpESvcpfbvrfG0fXRuIkAma3LChj+TYaJh5JZ8mfoSzVzVl5f2JkycjFFudT4lv4QtaIrMvYtRiYHzBS0z1q0FlKDlHSQ3WvqK29GX6v8tJNy0M72Vu/qaWK8AnmsH916PFgTSP0/ZHyLU21uUfmOOHjdIPH6uEIy0+anoH7CW+p1R+zsQJJNXk5QZf1UoDwEurPiA5hH4Ua2Tw154TP6+r3ozS3p1ORiwkyM4v5xq56+o36VwrXVOAFbwMOlB7++EVABrL1jsVD3rc7GJnP4tD5ZxKNWSEbWOyCcbHG2BhDUToIxjmPcnpGSHp+2qWvCLikWgBfw4WeglEYWUXCw/y6DUD0MGBDA5vOULW4GyJkMQyssj05xz5594i5KdENkcGU71+OsfNrdlzHdt0yA+M9ePbpVw7SX4Xqj8/5357jIDqGsU6PsRTLu26M9TsM0mUMVgVJ6S136nuwWsYNCg9i64cxv6PBWWJ9ytp5Y3YUCRk/YPOkIQB5ySUNeSiEoMQJVCa5ItjEge+AK9if6ypjqzFq1RFxhDuVPIM+rXoEt/gqJSuKSx3/oGPvZQ59eKZ/SIa1B1qIp/XqsELRfrum7/eo0McGPUMIGBMNsv2nedYPZ1dbpjlOk4mr4VFtFVHIlI4ps9N5Vx4Oo/p8sm6UBHqSZ4cbzIVviMncCQFZtycXl3DIXCYmvc/NQlQ3qRujsTz/7sR+nRIwaFXm7zMWHKoGcO21jnTi/kJOi8ne2bPWzxwx+681wU3zQuY=";
+// are encrypted with it. The instructor re-grades every downloaded exam file offline.
+const ENCRYPTED_QUESTIONS = "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";
 const PBKDF2_ITERATIONS = 200000;
 let EXAM = null;       // { questions: [...], integrity: "..." } after decryption
 let QUESTIONS = null;
@@ -528,6 +540,8 @@ function requestFullscreen() {
 
 async function recordEnvironment() {
   const info = {
+    safeExamBrowser: IN_SEB,
+    proctorOverride: !!(currentState && currentState.proctorOverride),
     screen: `${screen.width}×${screen.height}`,
     window: `${window.innerWidth}×${window.innerHeight}`,
     userAgent: navigator.userAgent
@@ -761,6 +775,14 @@ document.getElementById("startBtn").addEventListener("click", async () => {
     if (now > A_LAST) { alert("New starts closed at 2:10 PM. Please see your instructor."); return; }
   }
 
+  let usedOverride = false;
+  if (REQUIRE_SEB && !IN_SEB && !isInstructor && !(state && state.proctorOverride)) {
+    const oc = document.getElementById("overrideCode").value.trim();
+    if (!oc) { alert("This exam must be opened in Safe Exam Browser using the .seb file from Blackboard. If that is not possible, ask the proctor."); return; }
+    if (await sha256Hex("mt1|" + oc) !== PROCTOR_OVERRIDE_HASH) { alert("Incorrect proctor override code."); return; }
+    usedOverride = true;
+  }
+
   btn.disabled = true; btn.textContent = "Checking access code…";
   try { EXAM = await decryptExam(pwd); }
   catch (e) { btn.disabled = false; btn.textContent = "Begin Exam →"; alert("Incorrect access code. Please check with your instructor."); return; }
@@ -773,6 +795,10 @@ document.getElementById("startBtn").addEventListener("click", async () => {
   }
   currentState = state;
   events = state.events || [];
+  if (usedOverride) {
+    state.proctorOverride = true;
+    events.push({ type: "proctor_override", detail: "Started outside Safe Exam Browser with the proctor override code", at: new Date().toISOString() });
+  }
   ({ order, choiceOrders } = buildOrder(email));
   state.order = order;
   saveState(currentKey, state);
@@ -827,6 +853,13 @@ function submitExam(auto) {
     answers[qi] = sel ? parseInt(sel.value, 10) : -1;
   });
   quizActive = false;
+  let correct = 0;
+  const wrong = [];
+  QUESTIONS.forEach((q, qi) => { if (answers[qi] === q.a) correct++; else wrong.push(qi); });
+  currentState.correctCount = correct;
+  currentState.total = QUESTIONS.length;
+  currentState.scorePct = Math.round(1000 * correct / QUESTIONS.length) / 10;
+  currentState.wrong = wrong;
   currentState.answers = answers;
   currentState.answeredCount = Object.values(answers).filter(v => v >= 0).length;
   currentState.submitted = true;
@@ -847,6 +880,7 @@ function canonicalRecord(s) {
     exam: s.exam, name: s.name, email: s.email,
     startTime: new Date(s.startTime).toISOString(), submittedAt: s.submittedAt,
     autoSubmitted: !!s.autoSubmitted, answers: s.answers, order: s.order,
+    correctCount: s.correctCount, total: s.total, scorePct: s.scorePct,
     events: s.events || []
   };
 }
@@ -865,10 +899,12 @@ function renderSubmitted() {
   const s = currentState;
   const flagged = (s.events || []).filter(e => !e.info).length;
   document.getElementById("submittedBox").innerHTML = `
-    <div class="big">✓ Exam submitted</div>
+    <div class="label" style="font-weight:700; color:var(--muted);">✓ EXAM SUBMITTED — YOUR SCORE</div>
+    <div class="big">${s.correctCount} / ${s.total} &nbsp;(${s.scorePct.toFixed(1)}%)</div>
     <p>${s.autoSubmitted ? "Your exam was submitted automatically when time ran out." : "Your answers are locked."}</p>
-    <p>Answered: <strong>${s.answeredCount} of 20</strong> &nbsp;•&nbsp; Events recorded: <strong>${flagged}</strong></p>
-    <p class="muted">Submitted ${new Date(s.submittedAt).toLocaleString()}. Your score will be posted on Blackboard after grading.</p>`;
+    <p>Answered: <strong>${s.answeredCount} of ${s.total}</strong> &nbsp;•&nbsp; Events recorded: <strong>${flagged}</strong></p>
+    <p class="muted">Submitted ${new Date(s.submittedAt).toLocaleString()}. Your instructor reviews every exam file before grades are posted on Blackboard.</p>`;
+  renderReview(s);
 
   const fileName = `FIN4329_Midterm1_${s.name.replace(/[^A-Za-z0-9]+/g, "_")}.json`;
   document.getElementById("nextStepBlock").innerHTML = `
@@ -876,6 +912,7 @@ function renderSubmitted() {
       <h3 style="color:var(--err); margin-top:0;">⚠ REQUIRED: upload your exam file to Blackboard</h3>
       <ol style="font-size:14px; padding-left:22px; margin:8px 0;">
         <li><strong>Click the button below.</strong> A file named <code>${fileName}</code> saves to your Downloads folder.</li>
+        ${IN_SEB ? `<li><strong>Click "Finish &amp; exit Safe Exam Browser"</strong>, which appears after the download.</li>` : ""}
         <li><strong>Upload that file to the "Midterm 1 Exam File" assignment on Blackboard</strong> before you leave the room.</li>
       </ol>
       <div style="margin-top:14px; text-align:center;">
@@ -886,7 +923,41 @@ function renderSubmitted() {
         <strong>FERPA note:</strong> nothing is sent to any outside service. Blackboard is UTEP's official grade system.
       </p>
     </div>`;
-  document.getElementById("downloadBtn").onclick = () => downloadResults(fileName);
+  document.getElementById("downloadBtn").onclick = async () => {
+    await downloadResults(fileName);
+    if (IN_SEB && !document.getElementById("sebQuitBtn")) {
+      const q = document.createElement("div");
+      q.style.cssText = "margin-top:14px; text-align:center;";
+      q.innerHTML = `<p style="font-size:14px;">File saved to your Downloads folder. Now close Safe Exam Browser, open Blackboard in your normal browser, and upload the file.</p>
+        <a id="sebQuitBtn" href="${SEB_QUIT_URL}" style="display:inline-block; background:var(--err); color:#fff; padding:12px 24px; border-radius:8px; font-weight:700; text-decoration:none;">Finish &amp; exit Safe Exam Browser</a>`;
+      document.getElementById("nextStepBlock").appendChild(q);
+    }
+  };
+}
+
+function renderReview(s) {
+  let block = document.getElementById("reviewCard");
+  if (!block) {
+    block = document.createElement("div");
+    block.className = "card"; block.id = "reviewCard";
+    document.getElementById("results").appendChild(block);
+  }
+  if (!QUESTIONS) { block.innerHTML = ""; return; }
+  const { order: ord, choiceOrders: co } = buildOrder(s.email);
+  const cards = ord.map((qi, idx) => {
+    const q = QUESTIONS[qi], ans = s.answers[qi], ok = ans === q.a;
+    const choices = co[qi].map((origCi, pos) => {
+      const cls = origCi === ans ? (ok ? "correct-ans" : "wrong-ans") : "";
+      return `<label class="${cls}">${String.fromCharCode(65 + pos)}. ${q.choices[origCi]}</label>`;
+    }).join("");
+    return `<div class="q ${ok ? "correct" : "incorrect"}">
+      <div class="q-num">Question ${idx + 1} • ${ok ? "✓ Correct" : (ans === -1 ? "✗ Not answered" : "✗ Incorrect")}</div>
+      ${q.scenario ? `<div class="scenario-box">${q.scenario}</div>` : ""}
+      <div class="q-text">${q.q}</div>
+      <div class="choices">${choices}</div></div>`;
+  }).join("");
+  block.innerHTML = `<h2>Review: Your Answers</h2>
+    <p class="muted">Your answer is green if correct and red if incorrect. Correct answers and explanations are not shown during the exam.</p>${cards}`;
 }
 
 async function downloadResults(fileName) {
@@ -947,6 +1018,19 @@ function enforceKillDate() {
   }
   return false;
 }
+(function showSebStatus() {
+  const el = document.getElementById("sebStatus");
+  const check = new URLSearchParams(location.search).has("check");
+  if (IN_SEB) {
+    el.innerHTML = "<strong>✅ Safe Exam Browser detected</strong>" + (check ? "Your setup works. Close Safe Exam Browser with the Quit button and wait for exam day." : "You are in the locked exam browser.");
+    el.style.background = "var(--ok-bg)";
+  } else {
+    el.innerHTML = "<strong>⚠ Safe Exam Browser NOT detected</strong>Close this window and open the exam with the .seb file from Blackboard.";
+    el.style.background = "var(--err-bg)";
+    if (REQUIRE_SEB) document.getElementById("overrideRow").classList.remove("hidden");
+  }
+})();
+
 if (!enforceKillDate()) {
   setInterval(enforceKillDate, 30000);
   updateDeadlineBar();
