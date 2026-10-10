@@ -269,6 +269,9 @@
   #sheetGrid input.sel:focus { background: #f3fbf6; }
   #sheetFillBtns { font-size: 12px; color: #444; white-space: nowrap; }
   #sheetFillBtns button { padding: 3px 8px; font-size: 13px; margin-left: 2px; background: #eef2f8; color: #1f2d3d; border: 1px solid #c9d2df; border-radius: 4px; }
+  #sheetTip { height: 18px; font: 12px/18px Consolas, monospace; color: #333; border-bottom: 1px solid var(--border); padding: 1px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #sheetTip.show { background: #fffbe6; }
+  #sheetTip b { color: #14804a; }
   #sheetHint { font-size: 11px; color: var(--muted); padding: 3px 8px; border-top: 1px solid var(--border); }
 </style>
 </head>
@@ -302,8 +305,9 @@
 <div id="sheetPanel">
   <div id="sheetHeader"><span>📊 Spreadsheet (drag to move, corner to resize)</span><button onclick="toggleSheet(false)">×</button></div>
   <div id="sheetBar"><span id="sheetRef">A1</span><input id="sheetFx" placeholder="Value or formula, e.g. =B2*C2/365 or =SUM(B2:B5)" autocomplete="off"><span id="sheetFillBtns">Fill <button type="button" onmousedown="event.preventDefault()" onclick="sheetFill('down')" title="Fill down (Ctrl+D): copies the top cell of the selection into the cells below">↓</button><button type="button" onmousedown="event.preventDefault()" onclick="sheetFill('up')" title="Fill up: copies the bottom cell of the selection into the cells above">↑</button><button type="button" onmousedown="event.preventDefault()" onclick="sheetFill('right')" title="Fill right (Ctrl+R): copies the left cell of the selection into the cells to its right">→</button><button type="button" onmousedown="event.preventDefault()" onclick="sheetFill('left')" title="Fill left: copies the right cell of the selection into the cells to its left">←</button></span><button type="button" onclick="sheetClear()" style="padding:4px 10px;font-size:12px;background:#fdecea;color:var(--err);">Clear all</button></div>
+  <div id="sheetTip" aria-live="polite"></div>
   <div id="sheetGridWrap"><table id="sheetGrid"></table></div>
-  <div id="sheetHint">Formulas start with = &nbsp;•&nbsp; + - * / ^ % ( ) &nbsp;•&nbsp; ranges like B2:B5 &nbsp;•&nbsp; $ locks a reference: $B$1 &nbsp;•&nbsp; Enter = down, Tab = right<br>Select cells (drag or Shift+click), then Ctrl+D fills down, Ctrl+R fills right, or use the Fill buttons &nbsp;•&nbsp; Ctrl+Z undoes a fill<br>SUM AVERAGE MIN MAX SUMPRODUCT ROUND ROUNDUP INT ABS EXP IF &nbsp;•&nbsp; PMT RATE NPER PV FV</div>
+  <div id="sheetHint">Formulas start with = &nbsp;•&nbsp; + - * / ^ % ( ) &nbsp;•&nbsp; ranges like B2:B5 &nbsp;•&nbsp; $ locks a reference: $B$1 &nbsp;•&nbsp; Enter = down, Tab = right &nbsp;•&nbsp; F2 or double-click edits a cell<br>Select cells (drag or Shift+click), then Ctrl+D fills down, Ctrl+R fills right, or use the Fill buttons &nbsp;•&nbsp; Ctrl+Enter fills the selection &nbsp;•&nbsp; Ctrl+Z undoes &nbsp;•&nbsp; on a Mac use Control, not Command<br>While typing a formula, click or drag over cells to insert them &nbsp;•&nbsp; SUM AVERAGE MIN MAX SUMPRODUCT ROUND ROUNDUP INT ABS EXP IF &nbsp;•&nbsp; PMT RATE NPER PV FV (type =PV( to see its arguments)</div>
 </div>
 
 <div class="wrap">
@@ -1085,9 +1089,14 @@ function sheetBuild() {
   }
   g.innerHTML = html;
   g.querySelectorAll("input").forEach(inp => {
-    inp.addEventListener("focus", () => { sheetSel = inp.dataset.id; inp.value = sheet[sheetSel] || ""; inp.select(); sheetEnd = sheetSel; sheetShowBar(); sheetPaintSel(); });
-    inp.addEventListener("input", () => { document.getElementById("sheetFx").value = inp.value; });
-    inp.addEventListener("blur", () => { sheetCommit(inp.dataset.id, inp.value); });
+    inp.addEventListener("focus", () => {
+      sheetSel = inp.dataset.id; inp.value = sheet[sheetSel] || ""; inp.dataset.edit = ""; inp.select();   // typing replaces, as in Excel
+      sheetEnd = sheetSel; sheetShowBar(); sheetPaintSel();
+    });
+    inp.addEventListener("input", () => { document.getElementById("sheetFx").value = inp.value; sheetTip(inp); });
+    inp.addEventListener("keyup", () => sheetTip(inp));
+    inp.addEventListener("mouseup", () => { if (inp === document.activeElement) sheetTip(inp); });
+    inp.addEventListener("blur", () => { sheetTip(null); sheetCommit(inp.dataset.id, inp.value); });
     inp.addEventListener("keydown", (e) => {
       if (sheetKey(e, inp)) return;
       if (e.key === "Enter") { e.preventDefault(); sheetMove(inp.dataset.id, 0, e.shiftKey ? -1 : 1); }
@@ -1100,25 +1109,50 @@ function sheetBuild() {
     const inp = e.target.closest ? e.target.closest("input") : null;
     if (!inp || !inp.dataset.id) return;
     const a = document.activeElement;
+    const editor = a && (a.id === "sheetFx" || (a.dataset && a.dataset.id)) ? a : null;
+    if (editor && inp !== editor && sheetPointable(editor)) {          // typing a formula: insert this cell's reference
+      e.preventDefault();
+      sheetPoint = { el: editor, start: editor.selectionStart, len: editor.selectionEnd - editor.selectionStart, anchor: inp.dataset.id };
+      sheetPointTo(inp.dataset.id);
+      return;
+    }
     if (e.shiftKey && a && a.dataset && a.dataset.id) { e.preventDefault(); sheetEnd = inp.dataset.id; sheetPaintSel(); return; }
     sheetDragFrom = inp.dataset.id;
-    if (inp === a) { sheetEnd = sheetSel; sheetPaintSel(); }
-    else { e.preventDefault(); inp.focus(); }
+    if (inp === a) {
+      sheetEnd = sheetSel; sheetPaintSel();
+      if (!sheetEditing(inp)) { e.preventDefault(); inp.select(); }   // clicking the active cell again keeps it ready for typing
+    } else { e.preventDefault(); inp.focus(); }
   });
   g.addEventListener("dblclick", (e) => {     // double-click edits: cursor at the end, as Excel does
     const inp = e.target.closest ? e.target.closest("input") : null;
-    if (inp && inp === document.activeElement) { const n = inp.value.length; inp.setSelectionRange(n, n); }
+    if (inp && inp === document.activeElement) { inp.dataset.edit = "1"; const n = inp.value.length; inp.setSelectionRange(n, n); }
   });
   g.addEventListener("mouseover", (e) => {
+    const inp = e.target.closest ? e.target.closest("input") : null;
+    if (sheetPoint) {
+      if (!(e.buttons & 1)) { sheetPoint = null; return; }
+      if (inp && inp.dataset.id) sheetPointTo(inp.dataset.id);
+      return;
+    }
     if (!sheetDragFrom) return;
     if (!(e.buttons & 1)) { sheetDragFrom = null; return; }
-    const inp = e.target.closest ? e.target.closest("input") : null;
     if (inp && inp.dataset.id && inp.dataset.id !== sheetEnd) { sheetEnd = inp.dataset.id; sheetPaintSel(); }
   });
-  document.addEventListener("mouseup", () => { sheetDragFrom = null; });
+  g.addEventListener("dragstart", (e) => e.preventDefault());   // never drag a cell's text into another cell
+  document.addEventListener("mouseup", () => { sheetDragFrom = null; sheetPoint = null; });
   const fx = document.getElementById("sheetFx");
-  fx.addEventListener("input", () => { const c = sheetCellInput(sheetSel); if (c) c.value = fx.value; });
+  let fxTarget = null;
+  fx.addEventListener("focus", () => { fxTarget = sheetSel; });
+  fx.addEventListener("blur", () => {          // an edit made in the formula bar is kept when the student clicks elsewhere
+    sheetTip(null);
+    if (fxTarget && fx.value.trim() !== (sheet[fxTarget] || "")) sheetCommit(fxTarget, fx.value);
+  });
+  fx.addEventListener("input", () => { const c = sheetCellInput(sheetSel); if (c) c.value = fx.value; sheetTip(fx); });
+  fx.addEventListener("keyup", () => sheetTip(fx));
+  fx.addEventListener("mouseup", () => sheetTip(fx));
   fx.addEventListener("keydown", (e) => {
+    const k = (e.key || "").toLowerCase();
+    if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && (k === "d" || k === "r")) { e.preventDefault(); sheetFill(k === "d" ? "down" : "right"); return; }
     if (e.key === "Enter") { e.preventDefault(); sheetCommit(sheetSel, fx.value); sheetMove(sheetSel, 0, 1); }
   });
 }
@@ -1134,9 +1168,12 @@ function sheetMove(id, dc, dr) {
 }
 // =================== SELECTION AND FILL ===================
 // As in Excel: drag, Shift+click or Shift+arrows select a range; Ctrl+D fills down, Ctrl+R fills right,
-// the Fill buttons fill in any direction. "$" locks the column or row of a reference ($B$1, $B1, B$1).
+// the Fill buttons fill in any direction; Ctrl+Enter puts one entry in every selected cell.
+// "$" locks the column or row of a reference ($B$1, $B1, B$1). While typing a formula, clicking or dragging
+// over cells inserts their reference.
 let sheetEnd = "A1";          // far corner of the selection; the active cell (sheetSel) is the other corner
 let sheetDragFrom = null;     // set while the mouse is selecting
+let sheetPoint = null;        // set while a clicked or dragged reference is being inserted into a formula
 let sheetUndo = null;         // earlier contents of the cells changed by the last fill or range clear
 let sheetPainted = [];
 
@@ -1158,6 +1195,8 @@ function sheetPaintSel() {
   }
   ref.textContent = SHEET_COLS[R.c1] + R.r1 + ":" + SHEET_COLS[R.c2] + R.r2;
 }
+// a cell is being edited once its text differs from what is stored, or after F2 / double-click
+function sheetEditing(inp) { return inp.value !== (sheet[inp.dataset.id] || "") || inp.dataset.edit === "1"; }
 // Move a formula by (dc, dr): every reference shifts unless "$" locks it; text inside quotes is left alone.
 function sheetShift(raw, dc, dr) {
   if (!raw || raw[0] !== "=") return raw;
@@ -1170,13 +1209,12 @@ function sheetShift(raw, dc, dr) {
       return pre + ca + SHEET_COLS[c] + ra + r;
     })).join("");
 }
-function sheetRefreshActive(changed) {
+// after a fill, undo or clear, the active cell is ready for typing again: the next key replaces it
+function sheetReady() {
   const a = document.activeElement;
-  if (a && a.dataset && a.dataset.id && Object.prototype.hasOwnProperty.call(changed, a.dataset.id)) {
-    a.value = sheet[a.dataset.id] || "";
-    sheetShowBar();
-    sheetPaintSel();
-  }
+  if (a && a.dataset && a.dataset.id) { a.value = sheet[a.dataset.id] || ""; a.dataset.edit = ""; a.select(); }
+  sheetShowBar();
+  sheetPaintSel();
 }
 function sheetApply(changes) {
   const ids = Object.keys(changes);
@@ -1185,13 +1223,18 @@ function sheetApply(changes) {
   for (const id of ids) before[id] = sheet[id];
   for (const id of ids) { if (changes[id] === undefined) delete sheet[id]; else sheet[id] = changes[id]; }
   sheetUndo = before;
-  sheetRefreshActive(changes);
   sheetRender();
   sheetSave();
+  sheetReady();
+}
+// commit whatever is being typed (in the active cell or the formula bar) before acting on the sheet
+function sheetCommitPending() {
+  const a = document.activeElement, fx = document.getElementById("sheetFx");
+  if (a === fx) { if (fx.value.trim() !== (sheet[sheetSel] || "")) sheetCommit(sheetSel, fx.value); }
+  else if (a && a.dataset && a.dataset.id && a.value !== (sheet[a.dataset.id] || "")) sheetCommit(a.dataset.id, a.value);
 }
 function sheetFill(dir) {
-  const a = document.activeElement;
-  if (a && a.dataset && a.dataset.id && a.value !== (sheet[a.dataset.id] || "")) sheetCommit(a.dataset.id, a.value);
+  sheetCommitPending();
   const R = sheetRect(), changes = {};
   if (dir === "down" || dir === "up") {
     const src = R.r1 === R.r2 ? (dir === "down" ? R.r1 - 1 : R.r1 + 1) : (dir === "down" ? R.r1 : R.r2);
@@ -1210,6 +1253,16 @@ function sheetFill(dir) {
   }
   sheetApply(changes);
 }
+// Ctrl+Enter: the active cell's entry goes into every selected cell, adjusted like a fill
+function sheetFillSelection() {
+  sheetCommitPending();
+  const raw = sheet[sheetSel], R = sheetRect(), [ac, ar] = sheetCR(sheetSel), changes = {};
+  for (let r = R.r1; r <= R.r2; r++) for (let c = R.c1; c <= R.c2; c++) {
+    const id = SHEET_COLS[c] + r;
+    if (id !== sheetSel) changes[id] = raw === undefined ? undefined : sheetShift(raw, c - ac, r - ar);
+  }
+  sheetApply(changes);
+}
 function sheetClearRange() {
   const R = sheetRect(), changes = {};
   for (let r = R.r1; r <= R.r2; r++) for (let c = R.c1; c <= R.c2; c++) changes[SHEET_COLS[c] + r] = undefined;
@@ -1220,18 +1273,38 @@ function sheetUndoLast() {
   const before = sheetUndo;
   sheetUndo = null;
   for (const id of Object.keys(before)) { if (before[id] === undefined) delete sheet[id]; else sheet[id] = before[id]; }
-  sheetRefreshActive(before);
   sheetRender();
   sheetSave();
+  sheetReady();
 }
-// Keys handled inside a cell; returns true when the key was used for selection, fill, undo or range clear.
-function sheetKey(e, inp) {
-  const k = (e.key || "").toLowerCase(), editing = inp.value !== (sheet[inp.dataset.id] || "");
-  if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && (k === "d" || k === "r")) {
-    e.preventDefault(); sheetFill(k === "d" ? "down" : "right"); return true;
+// point mode: is the caret in a formula right after an operator, "(" or ","?
+function sheetPointable(el) {
+  const v = el.value, s = el.selectionStart;
+  return v[0] === "=" && s !== null && /[=+\-*/^(,:<>&]\s*$/.test(v.slice(0, s));
+}
+function sheetPointTo(id) {
+  const P = sheetPoint, el = P.el;
+  let ref = id;
+  if (id !== P.anchor) {
+    const [c1, r1] = sheetCR(P.anchor), [c2, r2] = sheetCR(id);
+    ref = SHEET_COLS[Math.min(c1, c2)] + Math.min(r1, r2) + ":" + SHEET_COLS[Math.max(c1, c2)] + Math.max(r1, r2);
   }
-  if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && k === "z" && !editing && sheetUndo) {
-    e.preventDefault(); sheetUndoLast(); return true;
+  el.value = el.value.slice(0, P.start) + ref + el.value.slice(P.start + P.len);
+  P.len = ref.length;
+  el.setSelectionRange(P.start + P.len, P.start + P.len);
+  if (el.id === "sheetFx") { const c = sheetCellInput(sheetSel); if (c) c.value = el.value; }
+  else document.getElementById("sheetFx").value = el.value;
+  sheetTip(el);
+}
+// Keys handled inside a cell; returns true when the key was used here.
+function sheetKey(e, inp) {
+  const k = (e.key || "").toLowerCase(), editing = sheetEditing(inp);
+  const ctrlOnly = e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey;
+  if (ctrlOnly && (k === "d" || k === "r")) { e.preventDefault(); sheetFill(k === "d" ? "down" : "right"); return true; }
+  if (ctrlOnly && k === "z" && !editing) { e.preventDefault(); sheetUndoLast(); return true; }   // never the browser's own undo
+  if (ctrlOnly && k === "enter") { e.preventDefault(); sheetFillSelection(); inp.select(); return true; }
+  if (k === "f2" && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+    e.preventDefault(); inp.dataset.edit = "1"; const n = inp.value.length; inp.setSelectionRange(n, n); return true;
   }
   if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
     const d = { arrowdown: [0, 1], arrowup: [0, -1], arrowright: [1, 0], arrowleft: [-1, 0] }[k];
@@ -1245,6 +1318,58 @@ function sheetKey(e, inp) {
   }
   if (k === "delete" && !editing && sheetEnd !== sheetSel) { e.preventDefault(); sheetClearRange(); return true; }
   return false;
+}
+// argument tips, as Excel shows them: =PV( shows PV(rate, nper, pmt, [fv], [type]) with the current argument in bold
+const SHEET_SIG = {
+  SUM: ["number1", "[number2]", "..."], AVERAGE: ["number1", "[number2]", "..."],
+  MIN: ["number1", "[number2]", "..."], MAX: ["number1", "[number2]", "..."],
+  SUMPRODUCT: ["array1", "[array2]", "..."], ROUND: ["number", "num_digits"], ROUNDUP: ["number", "num_digits"],
+  INT: ["number"], ABS: ["number"], EXP: ["number"], IF: ["logical_test", "[value_if_true]", "[value_if_false]"],
+  PMT: ["rate", "nper", "pv", "[fv]", "[type]"], RATE: ["nper", "pmt", "pv", "[fv]", "[type]", "[guess]"],
+  NPER: ["rate", "pmt", "pv", "[fv]", "[type]"], PV: ["rate", "nper", "pmt", "[fv]", "[type]"],
+  FV: ["rate", "nper", "pmt", "[pv]", "[type]"],
+};
+function sheetTip(el) {
+  const tip = document.getElementById("sheetTip");
+  tip.textContent = "";
+  tip.classList.remove("show");
+  if (!el || el.value[0] !== "=" || el.selectionStart === null) return;
+  const s = el.value.slice(1, el.selectionStart).replace(/"(?:[^"]|"")*"?/g, '""');
+  const stack = [];
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === "(") { const m = /([A-Za-z][A-Za-z0-9.]*)$/.exec(s.slice(0, i)); stack.push({ name: m ? m[1].toUpperCase() : null, arg: 0 }); }
+    else if (ch === ")") stack.pop();
+    else if (ch === "," && stack.length) stack[stack.length - 1].arg++;
+  }
+  for (let j = stack.length - 1; j >= 0; j--) {
+    const f = stack[j];
+    if (f.name && SHEET_SIG[f.name]) { sheetTipShow([[f.name, f.arg]]); return; }
+    if (f.name) return;
+  }
+  const m = /(^|[^A-Za-z0-9.$])([A-Za-z]+)$/.exec(s);          // a function name being typed
+  if (m) {
+    const pre = m[2].toUpperCase(), names = Object.keys(SHEET_SIG).filter(n => n.startsWith(pre));
+    if (names.length) sheetTipShow(names.map(n => [n, -1]));
+  }
+}
+function sheetTipShow(items) {
+  const tip = document.getElementById("sheetTip");
+  items.forEach(([name, arg], k) => {
+    if (k) tip.appendChild(document.createTextNode("    "));
+    const sig = SHEET_SIG[name];
+    let hi = arg;
+    if (hi >= 0 && (hi >= sig.length || sig[hi] === "...")) hi = sig.indexOf("...") > 0 ? sig.indexOf("...") - 1 : sig.length - 1;
+    tip.appendChild(document.createTextNode(name + "("));
+    sig.forEach((a, i) => {
+      if (i) tip.appendChild(document.createTextNode(", "));
+      if (i === hi) { const b = document.createElement("b"); b.textContent = a; tip.appendChild(b); }
+      else tip.appendChild(document.createTextNode(a));
+    });
+    tip.appendChild(document.createTextNode(")"));
+    if (hi >= 0 && sig[hi] === "[type]") tip.appendChild(document.createTextNode("   type: 0 = end of period, 1 = beginning"));
+  });
+  tip.classList.add("show");
 }
 function sheetCommit(id, raw) {
   raw = (raw || "").trim();
@@ -1270,12 +1395,13 @@ function sheetClear() {
 
 // ---- formula engine: a small Excel-style parser and evaluator (no eval, no Function)
 // Precedence follows Excel: negation > % > ^ (left to right) > * / > + - > & > comparisons.
+// A blank cell is null: 0 in arithmetic, "" in text, and skipped by SUM/AVERAGE/MIN/MAX.
 function sheetParseNumber(s) {
   let t = s.replace(/[$,\s]/g, "");
   let neg = false, pct = false;
   if (/^\(.*\)$/.test(t)) { neg = true; t = t.slice(1, -1); }
   if (t.endsWith("%")) { pct = true; t = t.slice(0, -1); }
-  if (!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(t)) return null;
+  if (!/^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(t)) return null;
   let n = parseFloat(t);
   if (pct) n /= 100;
   return neg ? -n : n;
@@ -1283,8 +1409,10 @@ function sheetParseNumber(s) {
 let sheetMemo = null;   // per-render cache, so a long column of formulas is evaluated once
 function sheetValue(id, seen) {
   const raw = sheet[id];
-  if (raw === undefined || raw === "") return 0;
+  if (raw === undefined || raw === "") return null;
   if (raw[0] !== "=") {
+    const u = raw.trim().toUpperCase();
+    if (u === "TRUE" || u === "FALSE") return u === "TRUE";
     const n = sheetParseNumber(raw);
     return n === null ? raw : n;
   }
@@ -1350,13 +1478,13 @@ function sheetParse(src) {
     const tk = toks[p++];
     if (!tk) fail();
     if (tk.t === "num" || tk.t === "str") return { k: "lit", v: tk.v };
-    if (tk.t === "err") return { k: "err", v: tk.v };
+    if (tk.t === "err") { if (isOp(":")) p += 2; return { k: "err", v: tk.v }; }   // #REF! as either end of a range
     if (tk.t === "op" && tk.v === "(") { const x = cmp(); if (!isOp(")")) fail(); p++; return x; }
     if (tk.t !== "id") fail();
     if (isOp("(")) {
       p++;
-      const args = [];
-      if (!isOp(")")) for (;;) { args.push(cmp()); if (isOp(",")) { p++; continue; } break; }
+      const args = [];   // an empty argument, as in PMT(r,n,pv,,1), takes the function's default
+      if (!isOp(")")) for (;;) { args.push(isOp(",") || isOp(")") ? { k: "missing" } : cmp()); if (isOp(",")) { p++; continue; } break; }
       if (!isOp(")")) fail();
       p++;
       if (!Object.prototype.hasOwnProperty.call(SHEET_FN, tk.v)) throw sheetErr("#NAME");
@@ -1367,7 +1495,9 @@ function sheetParse(src) {
     if (!a) throw sheetErr("#NAME");
     if (isOp(":")) {
       p++;
-      const t2 = toks[p++], b = t2 && t2.t === "id" ? sheetRefId(t2.v) : null;
+      const t2 = toks[p++];
+      if (t2 && t2.t === "err") return { k: "err", v: "#REF" };
+      const b = t2 && t2.t === "id" ? sheetRefId(t2.v) : null;
       if (!b) fail();
       if (a === "#REF" || b === "#REF") return { k: "err", v: "#REF" };
       return { k: "range", a, b };
@@ -1378,9 +1508,11 @@ function sheetParse(src) {
   if (p !== toks.length) fail();
   return ast;
 }
+function sheetFinite(x) { if (!isFinite(x)) throw sheetErr("#NUM"); return x; }
 function sheetScalar(v) { if (Array.isArray(v)) throw sheetErr("#VALUE"); return v; }
 function sheetToNum(v) {
   v = sheetScalar(v);
+  if (v === null || v === undefined) return 0;
   if (typeof v === "number") return v;
   if (typeof v === "boolean") return v ? 1 : 0;
   const n = sheetParseNumber(String(v));
@@ -1389,12 +1521,16 @@ function sheetToNum(v) {
 }
 function sheetToText(v) {
   v = sheetScalar(v);
+  if (v === null || v === undefined) return "";
   if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
   if (typeof v === "number") return String(Number(v.toPrecision(15)));
   return v;
 }
 function sheetCompare(a, b, op) {
   a = sheetScalar(a); b = sheetScalar(b);
+  const blankAs = (other) => typeof other === "string" ? "" : typeof other === "boolean" ? false : 0;
+  if (a === null || a === undefined) a = blankAs(b === null || b === undefined ? 0 : b);
+  if (b === null || b === undefined) b = blankAs(a);
   const rank = (v) => typeof v === "number" ? 0 : typeof v === "string" ? 1 : 2;
   let c;
   if (rank(a) !== rank(b)) c = rank(a) - rank(b);
@@ -1402,40 +1538,50 @@ function sheetCompare(a, b, op) {
   else { const x = Number(Number(a).toPrecision(15)), y = Number(Number(b).toPrecision(15)); c = x < y ? -1 : x > y ? 1 : 0; }
   return op === "=" ? c === 0 : op === "<>" ? c !== 0 : op === "<" ? c < 0 : op === ">" ? c > 0 : op === "<=" ? c <= 0 : c >= 0;
 }
+function sheetShaped(arr, rows, cols) { arr.rows = rows; arr.cols = cols; return arr; }
 function sheetRangeValues(a, b, seen) {
   const c1 = SHEET_COLS.indexOf(a[0]), r1 = parseInt(a.slice(1), 10), c2 = SHEET_COLS.indexOf(b[0]), r2 = parseInt(b.slice(1), 10);
   const out = [];
   for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++)
-    for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) {
-      const id = SHEET_COLS[c] + r;
-      out.push(sheet[id] === undefined || sheet[id] === "" ? null : sheetValue(id, seen));   // blanks stay blank, as in Excel
-    }
-  return out;
+    for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) out.push(sheetValue(SHEET_COLS[c] + r, seen));
+  return sheetShaped(out, Math.abs(r2 - r1) + 1, Math.abs(c2 - c1) + 1);
+}
+// Excel array arithmetic: an operator applied to a range works cell by cell (e.g. SUMPRODUCT(A1:A3*B1:B3))
+function sheetMap(a, b, f) {
+  const A = Array.isArray(a), B = Array.isArray(b);
+  if (!A && !B) return f(a, b);
+  const s = A ? a : b;
+  if (A && B && (a.rows !== b.rows || a.cols !== b.cols)) throw sheetErr("#VALUE");
+  const out = [];
+  for (let i = 0; i < s.length; i++) out.push(f(A ? a[i] : a, B ? b[i] : b));
+  return sheetShaped(out, s.rows, s.cols);
+}
+function sheetBin(op, a, b) {
+  switch (op) {
+    case "+": return sheetFinite(sheetToNum(a) + sheetToNum(b));
+    case "-": return sheetFinite(sheetToNum(a) - sheetToNum(b));
+    case "*": return sheetFinite(sheetToNum(a) * sheetToNum(b));
+    case "/": { const x = sheetToNum(a), d = sheetToNum(b); if (d === 0) throw sheetErr("#DIV/0"); return sheetFinite(x / d); }
+    case "^": { const x = sheetToNum(a), y = sheetToNum(b); if (x === 0 && y <= 0) throw sheetErr(y === 0 ? "#NUM" : "#DIV/0"); return sheetFinite(Math.pow(x, y)); }
+    case "&": return sheetToText(a) + sheetToText(b);
+    default: return sheetCompare(a, b, op);
+  }
 }
 function sheetEvalNode(n, seen) {
   switch (n.k) {
     case "lit": return n.v;
+    case "missing": return undefined;
     case "err": throw sheetErr(n.v);
     case "ref": return sheetValue(n.id, seen);
     case "range": return sheetRangeValues(n.a, n.b, seen);
-    case "un": { const x = sheetToNum(sheetEvalNode(n.x, seen)); return n.op === "-" ? -x : x; }
-    case "pct": return sheetToNum(sheetEvalNode(n.x, seen)) / 100;
+    case "un": return sheetMap(sheetEvalNode(n.x, seen), null, (x) => n.op === "-" ? sheetFinite(-sheetToNum(x)) : x);
+    case "pct": return sheetMap(sheetEvalNode(n.x, seen), null, (x) => sheetToNum(x) / 100);
     case "fn": return sheetCall(n, seen);
-    case "bin": {
-      const a = sheetEvalNode(n.l, seen), b = sheetEvalNode(n.r, seen);
-      switch (n.op) {
-        case "+": return sheetToNum(a) + sheetToNum(b);
-        case "-": return sheetToNum(a) - sheetToNum(b);
-        case "*": return sheetToNum(a) * sheetToNum(b);
-        case "/": { const d = sheetToNum(b); if (d === 0) throw sheetErr("#DIV/0"); return sheetToNum(a) / d; }
-        case "^": { const x = sheetToNum(a), y = sheetToNum(b); if (x === 0 && y <= 0) throw sheetErr(y === 0 ? "#NUM" : "#DIV/0"); return Math.pow(x, y); }
-        case "&": return sheetToText(a) + sheetToText(b);
-        default: return sheetCompare(a, b, n.op);
-      }
-    }
+    case "bin": return sheetMap(sheetEvalNode(n.l, seen), sheetEvalNode(n.r, seen), (a, b) => sheetBin(n.op, a, b));
   }
   throw sheetErr("#ERROR");
 }
+const SHEET_AGG = { SUM: 1, AVERAGE: 1, MIN: 1, MAX: 1, SUMPRODUCT: 1 };
 function sheetCall(n, seen) {
   if (n.name === "IF") {   // only the chosen branch is evaluated, as in Excel
     if (n.args.length < 2 || n.args.length > 3) throw sheetErr("#ERROR");
@@ -1444,7 +1590,13 @@ function sheetCall(n, seen) {
     if (typeof c === "number" ? c !== 0 : c) return sheetEvalNode(n.args[1], seen);
     return n.args.length === 3 ? sheetEvalNode(n.args[2], seen) : false;
   }
-  return SHEET_FN[n.name](n.args.map(a => sheetEvalNode(a, seen)));
+  // in SUM, AVERAGE, MIN, MAX and SUMPRODUCT a cell reference behaves like a one-cell range (blanks, text, TRUE skipped)
+  const args = n.args.map((a) => {
+    const v = sheetEvalNode(a, seen);
+    return SHEET_AGG[n.name] && a.k === "ref" ? sheetShaped([v], 1, 1) : v;
+  });
+  const v = SHEET_FN[n.name](args);
+  return typeof v === "number" ? sheetFinite(v) : v;
 }
 // numbers from arguments: inside ranges, text, TRUE/FALSE and blanks are skipped (as in Excel)
 function sheetNums(args) {
@@ -1455,7 +1607,7 @@ function sheetNums(args) {
   }
   return out;
 }
-function sheetArg(a, i) { if (a[i] === undefined) throw sheetErr("#ERROR"); return sheetToNum(a[i]); }
+function sheetArg(a, i) { if (i >= a.length) throw sheetErr("#ERROR"); return sheetToNum(a[i]); }
 function sheetOpt(a, i, d) { return a[i] === undefined ? d : sheetToNum(a[i]); }
 function sheetRound(x, d, up) {
   d = Math.trunc(d);
@@ -1500,10 +1652,11 @@ const SHEET_FN = {
   IF: null,   // evaluated lazily in sheetCall
   SUMPRODUCT: (a) => {
     if (!a.length) throw sheetErr("#ERROR");
-    const arrs = a.map(x => Array.isArray(x) ? x : [sheetToNum(x)]), n = arrs[0].length;
-    if (arrs.some(x => x.length !== n)) throw sheetErr("#VALUE");
+    const arrs = a.map(x => Array.isArray(x) ? x : sheetShaped([sheetToNum(x)], 1, 1));
+    const s0 = arrs[0];
+    if (arrs.some(x => x.rows !== s0.rows || x.cols !== s0.cols)) throw sheetErr("#VALUE");
     let s = 0;
-    for (let i = 0; i < n; i++) { let p = 1; for (const x of arrs) p *= typeof x[i] === "number" ? x[i] : 0; s += p; }
+    for (let i = 0; i < s0.length; i++) { let p = 1; for (const x of arrs) p *= typeof x[i] === "number" ? x[i] : 0; s += p; }
     return s;
   },
   PMT: (a) => {
@@ -1542,12 +1695,20 @@ const SHEET_FN = {
 function sheetEval(expr, seen) {
   const v = sheetEvalNode(sheetParse(expr), seen);
   if (Array.isArray(v)) throw sheetErr("#VALUE");
-  if (typeof v === "number" && !isFinite(v)) throw sheetErr("#NUM");
+  if (v === null || v === undefined) return 0;     // =A1 with A1 blank shows 0, as in Excel
+  if (typeof v === "number") return sheetFinite(v);
   return v;
 }
 function sheetFormat(v) {
   if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
-  return typeof v === "number" ? (v === 0 ? 0 : v).toLocaleString(undefined, { maximumFractionDigits: 4 }) : String(v);
+  if (typeof v !== "number") return String(v);
+  let x = Number(v.toPrecision(10));               // up to 10 significant digits, like Excel's General format
+  if (Math.abs(x) < 5e-11) x = 0;
+  for (let d = 10; d >= 0; d--) {                  // only as many decimals as fit the cell, so no digit is cut off
+    const s = x.toLocaleString(undefined, { maximumFractionDigits: d });
+    if (s.length <= 11) return s;
+  }
+  return x.toExponential(4);
 }
 function sheetRender() {
   sheetMemo = new Map();
