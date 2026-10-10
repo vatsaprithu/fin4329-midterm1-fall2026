@@ -363,9 +363,12 @@
       <input type="text" id="accessPassword" placeholder="Enter the access code to unlock the exam" autocomplete="off">
     </div>
 
+    <div class="form-row hidden" id="proctorLinkRow" style="margin-top:-6px;">
+      <button type="button" id="proctorLink" style="background:none;border:none;box-shadow:none;padding:0;min-width:0;color:var(--muted);font-size:12px;text-decoration:underline;cursor:pointer;">Proctor</button>
+    </div>
     <div class="form-row hidden" id="overrideRow">
       <label for="overrideCode">Proctor override code (entered by the proctor only)</label>
-      <input type="text" id="overrideCode" placeholder="Only if Safe Exam Browser cannot be used on this computer" autocomplete="off">
+      <input type="text" id="overrideCode" placeholder="Proctor passcode: dry run, late start, or no Safe Exam Browser" autocomplete="off">
     </div>
     <div id="sebStatus" class="info-pill" style="margin:10px 0;"></div>
 
@@ -1764,6 +1767,14 @@ function enforceKillDate() {
   if (IN_SEB) {
     el.innerHTML = "<strong>✅ Safe Exam Browser detected</strong>" + (check ? "Your setup works. Close Safe Exam Browser with the Quit button and wait for exam day." : "You are in the locked exam browser.");
     el.style.background = "var(--ok-bg)";
+    // inside SEB the override field stays out of sight; the proctor opens it with the small "Proctor" link
+    // (needed for a dry run before exam day and for a late start after 2:10 PM)
+    document.getElementById("proctorLinkRow").classList.remove("hidden");
+    document.getElementById("proctorLink").addEventListener("click", () => {
+      const row = document.getElementById("overrideRow");
+      row.classList.toggle("hidden");
+      if (!row.classList.contains("hidden")) document.getElementById("overrideCode").focus();
+    });
   } else {
     el.innerHTML = "<strong>⚠ Safe Exam Browser NOT detected</strong>Close this window and open the exam with the .seb file from Blackboard.";
     el.style.background = "var(--err-bg)";
