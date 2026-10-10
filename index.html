@@ -417,7 +417,7 @@ const EMAIL_DOMAINS_ALLOWED = ["@miners.utep.edu", "@utep.edu"];
 const REQUIRE_SEB = true;
 const PROCTOR_OVERRIDE_HASH = "c7adeb149c1ca66f19d376159aabe290becd520b1d02b81baa5c81574fbb8dce";       // SHA-256 of "mt1|" + override code
 const SEB_QUIT_URL = "https://vatsaprithu.github.io/fin4329-midterm1-fall2026/quit.html";                  // navigating here closes SEB
-const IN_SEB = /SEB|SafeExamBrowser/i.test(navigator.userAgent) || typeof window.SafeExamBrowser !== "undefined";
+const IN_SEB = /\bSEB\b|SafeExamBrowser/i.test(navigator.userAgent) || typeof window.SafeExamBrowser !== "undefined";
 
 // =================== ENCRYPTED QUESTIONS (AES-256-GCM, PBKDF2-SHA256) ===================
 // The access code is never stored in this file. The questions (without the answer key)
