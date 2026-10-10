@@ -255,7 +255,7 @@
   #sheetHeader { background: #14804a; color: #fff; padding: 6px 10px; cursor: move; display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 14px; }
   #sheetHeader button { background: transparent; color: #fff; border: none; font-size: 18px; cursor: pointer; padding: 0 4px; }
   #sheetBar { display: flex; gap: 6px; align-items: center; padding: 5px 8px; border-bottom: 1px solid var(--border); font-size: 13px; }
-  #sheetRef { width: 46px; font-weight: 700; color: #14804a; }
+  #sheetRef { min-width: 46px; font-weight: 700; color: #14804a; white-space: nowrap; }
   #sheetFx { flex: 1; font-family: Consolas, monospace; font-size: 13px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; }
   #sheetGridWrap { flex: 1; overflow: auto; }
   #sheetGrid { border-collapse: collapse; font-size: 13px; }
@@ -265,6 +265,10 @@
   #sheetGrid input { width: 84px; border: none; padding: 3px 5px; font-size: 13px; text-align: right; font-family: inherit; background: transparent; }
   #sheetGrid input:focus { outline: 2px solid #14804a; background: #f3fbf6; text-align: left; }
   #sheetGrid input.err { color: var(--err); }
+  #sheetGrid input.sel { background: #dcefe3; }
+  #sheetGrid input.sel:focus { background: #f3fbf6; }
+  #sheetFillBtns { font-size: 12px; color: #444; white-space: nowrap; }
+  #sheetFillBtns button { padding: 3px 8px; font-size: 13px; margin-left: 2px; background: #eef2f8; color: #1f2d3d; border: 1px solid #c9d2df; border-radius: 4px; }
   #sheetHint { font-size: 11px; color: var(--muted); padding: 3px 8px; border-top: 1px solid var(--border); }
 </style>
 </head>
@@ -297,9 +301,9 @@
 <button id="sheetToggle" onclick="toggleSheet()">📊 Spreadsheet</button>
 <div id="sheetPanel">
   <div id="sheetHeader"><span>📊 Spreadsheet (drag to move, corner to resize)</span><button onclick="toggleSheet(false)">×</button></div>
-  <div id="sheetBar"><span id="sheetRef">A1</span><input id="sheetFx" placeholder="Value or formula, e.g. =B2*C2/365 or =SUM(B2:B5)" autocomplete="off"><button type="button" onclick="sheetClear()" style="padding:4px 10px;font-size:12px;background:#fdecea;color:var(--err);">Clear all</button></div>
+  <div id="sheetBar"><span id="sheetRef">A1</span><input id="sheetFx" placeholder="Value or formula, e.g. =B2*C2/365 or =SUM(B2:B5)" autocomplete="off"><span id="sheetFillBtns">Fill <button type="button" onmousedown="event.preventDefault()" onclick="sheetFill('down')" title="Fill down (Ctrl+D): copies the top cell of the selection into the cells below">↓</button><button type="button" onmousedown="event.preventDefault()" onclick="sheetFill('up')" title="Fill up: copies the bottom cell of the selection into the cells above">↑</button><button type="button" onmousedown="event.preventDefault()" onclick="sheetFill('right')" title="Fill right (Ctrl+R): copies the left cell of the selection into the cells to its right">→</button><button type="button" onmousedown="event.preventDefault()" onclick="sheetFill('left')" title="Fill left: copies the right cell of the selection into the cells to its left">←</button></span><button type="button" onclick="sheetClear()" style="padding:4px 10px;font-size:12px;background:#fdecea;color:var(--err);">Clear all</button></div>
   <div id="sheetGridWrap"><table id="sheetGrid"></table></div>
-  <div id="sheetHint">Formulas start with = &nbsp;•&nbsp; + − * / ^ % ( ) &nbsp;•&nbsp; SUM, AVERAGE, MIN, MAX, ROUND, ABS &nbsp;•&nbsp; ranges like B2:B5 &nbsp;•&nbsp; Enter = down, Tab = right</div>
+  <div id="sheetHint">Formulas start with = &nbsp;•&nbsp; + - * / ^ % ( ) &nbsp;•&nbsp; ranges like B2:B5 &nbsp;•&nbsp; $ locks a reference: $B$1 &nbsp;•&nbsp; Enter = down, Tab = right<br>Select cells (drag or Shift+click), then Ctrl+D fills down, Ctrl+R fills right, or use the Fill buttons &nbsp;•&nbsp; Ctrl+Z undoes a fill<br>SUM AVERAGE MIN MAX SUMPRODUCT ROUND ROUNDUP INT ABS EXP IF &nbsp;•&nbsp; PMT RATE NPER PV FV</div>
 </div>
 
 <div class="wrap">
@@ -1060,7 +1064,7 @@ function calcTryEval() {
 })();
 
 // =================== SPREADSHEET ===================
-const SHEET_COLS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""), SHEET_ROWS = 50;
+const SHEET_COLS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""), SHEET_ROWS = 99;
 let sheet = {};          // raw contents by cell id, e.g. { B2: "=A2*3" }
 let sheetSel = "A1";
 let SHEET_HINT = "";
@@ -1081,16 +1085,37 @@ function sheetBuild() {
   }
   g.innerHTML = html;
   g.querySelectorAll("input").forEach(inp => {
-    inp.addEventListener("focus", () => { sheetSel = inp.dataset.id; inp.value = sheet[sheetSel] || ""; sheetShowBar(); });
+    inp.addEventListener("focus", () => { sheetSel = inp.dataset.id; inp.value = sheet[sheetSel] || ""; inp.select(); sheetEnd = sheetSel; sheetShowBar(); sheetPaintSel(); });
     inp.addEventListener("input", () => { document.getElementById("sheetFx").value = inp.value; });
     inp.addEventListener("blur", () => { sheetCommit(inp.dataset.id, inp.value); });
     inp.addEventListener("keydown", (e) => {
+      if (sheetKey(e, inp)) return;
       if (e.key === "Enter") { e.preventDefault(); sheetMove(inp.dataset.id, 0, e.shiftKey ? -1 : 1); }
       else if (e.key === "ArrowDown") { e.preventDefault(); sheetMove(inp.dataset.id, 0, 1); }
       else if (e.key === "ArrowUp") { e.preventDefault(); sheetMove(inp.dataset.id, 0, -1); }
       else if (e.key === "Escape") { inp.value = sheet[inp.dataset.id] || ""; inp.blur(); }
     });
   });
+  g.addEventListener("mousedown", (e) => {
+    const inp = e.target.closest ? e.target.closest("input") : null;
+    if (!inp || !inp.dataset.id) return;
+    const a = document.activeElement;
+    if (e.shiftKey && a && a.dataset && a.dataset.id) { e.preventDefault(); sheetEnd = inp.dataset.id; sheetPaintSel(); return; }
+    sheetDragFrom = inp.dataset.id;
+    if (inp === a) { sheetEnd = sheetSel; sheetPaintSel(); }
+    else { e.preventDefault(); inp.focus(); }
+  });
+  g.addEventListener("dblclick", (e) => {     // double-click edits: cursor at the end, as Excel does
+    const inp = e.target.closest ? e.target.closest("input") : null;
+    if (inp && inp === document.activeElement) { const n = inp.value.length; inp.setSelectionRange(n, n); }
+  });
+  g.addEventListener("mouseover", (e) => {
+    if (!sheetDragFrom) return;
+    if (!(e.buttons & 1)) { sheetDragFrom = null; return; }
+    const inp = e.target.closest ? e.target.closest("input") : null;
+    if (inp && inp.dataset.id && inp.dataset.id !== sheetEnd) { sheetEnd = inp.dataset.id; sheetPaintSel(); }
+  });
+  document.addEventListener("mouseup", () => { sheetDragFrom = null; });
   const fx = document.getElementById("sheetFx");
   fx.addEventListener("input", () => { const c = sheetCellInput(sheetSel); if (c) c.value = fx.value; });
   fx.addEventListener("keydown", (e) => {
@@ -1107,8 +1132,123 @@ function sheetMove(id, dc, dr) {
   const nr = Math.min(Math.max(r + dr, 1), SHEET_ROWS);
   sheetCellInput(SHEET_COLS[nc] + nr).focus();
 }
+// =================== SELECTION AND FILL ===================
+// As in Excel: drag, Shift+click or Shift+arrows select a range; Ctrl+D fills down, Ctrl+R fills right,
+// the Fill buttons fill in any direction. "$" locks the column or row of a reference ($B$1, $B1, B$1).
+let sheetEnd = "A1";          // far corner of the selection; the active cell (sheetSel) is the other corner
+let sheetDragFrom = null;     // set while the mouse is selecting
+let sheetUndo = null;         // earlier contents of the cells changed by the last fill or range clear
+let sheetPainted = [];
+
+function sheetCR(id) { return [SHEET_COLS.indexOf(id[0]), parseInt(id.slice(1), 10)]; }
+function sheetRect() {
+  const [c1, r1] = sheetCR(sheetSel), [c2, r2] = sheetCR(sheetEnd);
+  return { c1: Math.min(c1, c2), c2: Math.max(c1, c2), r1: Math.min(r1, r2), r2: Math.max(r1, r2) };
+}
+function sheetPaintSel() {
+  for (const id of sheetPainted) { const i = sheetCellInput(id); if (i) i.classList.remove("sel"); }
+  sheetPainted = [];
+  const ref = document.getElementById("sheetRef");
+  if (sheetEnd === sheetSel) { ref.textContent = sheetSel; return; }
+  const R = sheetRect();
+  for (let r = R.r1; r <= R.r2; r++) for (let c = R.c1; c <= R.c2; c++) {
+    const id = SHEET_COLS[c] + r;
+    sheetCellInput(id).classList.add("sel");
+    sheetPainted.push(id);
+  }
+  ref.textContent = SHEET_COLS[R.c1] + R.r1 + ":" + SHEET_COLS[R.c2] + R.r2;
+}
+// Move a formula by (dc, dr): every reference shifts unless "$" locks it; text inside quotes is left alone.
+function sheetShift(raw, dc, dr) {
+  if (!raw || raw[0] !== "=") return raw;
+  return "=" + raw.slice(1).split(/("(?:[^"]|"")*")/).map((part, i) => i % 2 ? part :
+    part.replace(/(^|[^A-Za-z0-9_.$])(\$?)([A-Za-z])(\$?)(\d{1,2})(?![A-Za-z0-9_.(])/g, (m, pre, ca, col, ra, row) => {
+      let c = SHEET_COLS.indexOf(col.toUpperCase()), r = parseInt(row, 10);
+      if (!ca) c += dc;
+      if (!ra) r += dr;
+      if (c < 0 || c >= SHEET_COLS.length || r < 1 || r > SHEET_ROWS) return pre + "#REF!";
+      return pre + ca + SHEET_COLS[c] + ra + r;
+    })).join("");
+}
+function sheetRefreshActive(changed) {
+  const a = document.activeElement;
+  if (a && a.dataset && a.dataset.id && Object.prototype.hasOwnProperty.call(changed, a.dataset.id)) {
+    a.value = sheet[a.dataset.id] || "";
+    sheetShowBar();
+    sheetPaintSel();
+  }
+}
+function sheetApply(changes) {
+  const ids = Object.keys(changes);
+  if (!ids.length) return;
+  const before = {};
+  for (const id of ids) before[id] = sheet[id];
+  for (const id of ids) { if (changes[id] === undefined) delete sheet[id]; else sheet[id] = changes[id]; }
+  sheetUndo = before;
+  sheetRefreshActive(changes);
+  sheetRender();
+  sheetSave();
+}
+function sheetFill(dir) {
+  const a = document.activeElement;
+  if (a && a.dataset && a.dataset.id && a.value !== (sheet[a.dataset.id] || "")) sheetCommit(a.dataset.id, a.value);
+  const R = sheetRect(), changes = {};
+  if (dir === "down" || dir === "up") {
+    const src = R.r1 === R.r2 ? (dir === "down" ? R.r1 - 1 : R.r1 + 1) : (dir === "down" ? R.r1 : R.r2);
+    if (src < 1 || src > SHEET_ROWS) return;
+    for (let c = R.c1; c <= R.c2; c++) {
+      const raw = sheet[SHEET_COLS[c] + src];
+      for (let r = R.r1; r <= R.r2; r++) if (r !== src) changes[SHEET_COLS[c] + r] = raw === undefined ? undefined : sheetShift(raw, 0, r - src);
+    }
+  } else {
+    const src = R.c1 === R.c2 ? (dir === "right" ? R.c1 - 1 : R.c1 + 1) : (dir === "right" ? R.c1 : R.c2);
+    if (src < 0 || src >= SHEET_COLS.length) return;
+    for (let r = R.r1; r <= R.r2; r++) {
+      const raw = sheet[SHEET_COLS[src] + r];
+      for (let c = R.c1; c <= R.c2; c++) if (c !== src) changes[SHEET_COLS[c] + r] = raw === undefined ? undefined : sheetShift(raw, c - src, 0);
+    }
+  }
+  sheetApply(changes);
+}
+function sheetClearRange() {
+  const R = sheetRect(), changes = {};
+  for (let r = R.r1; r <= R.r2; r++) for (let c = R.c1; c <= R.c2; c++) changes[SHEET_COLS[c] + r] = undefined;
+  sheetApply(changes);
+}
+function sheetUndoLast() {
+  if (!sheetUndo) return;
+  const before = sheetUndo;
+  sheetUndo = null;
+  for (const id of Object.keys(before)) { if (before[id] === undefined) delete sheet[id]; else sheet[id] = before[id]; }
+  sheetRefreshActive(before);
+  sheetRender();
+  sheetSave();
+}
+// Keys handled inside a cell; returns true when the key was used for selection, fill, undo or range clear.
+function sheetKey(e, inp) {
+  const k = (e.key || "").toLowerCase(), editing = inp.value !== (sheet[inp.dataset.id] || "");
+  if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && (k === "d" || k === "r")) {
+    e.preventDefault(); sheetFill(k === "d" ? "down" : "right"); return true;
+  }
+  if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && k === "z" && !editing && sheetUndo) {
+    e.preventDefault(); sheetUndoLast(); return true;
+  }
+  if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    const d = { arrowdown: [0, 1], arrowup: [0, -1], arrowright: [1, 0], arrowleft: [-1, 0] }[k];
+    if (d && (d[0] === 0 || !editing)) {
+      e.preventDefault();
+      const [c, r] = sheetCR(sheetEnd);
+      sheetEnd = SHEET_COLS[Math.min(Math.max(c + d[0], 0), SHEET_COLS.length - 1)] + Math.min(Math.max(r + d[1], 1), SHEET_ROWS);
+      sheetPaintSel();
+      return true;
+    }
+  }
+  if (k === "delete" && !editing && sheetEnd !== sheetSel) { e.preventDefault(); sheetClearRange(); return true; }
+  return false;
+}
 function sheetCommit(id, raw) {
   raw = (raw || "").trim();
+  if (raw !== (sheet[id] || "")) sheetUndo = null;      // a typed change ends the chance to undo the last fill
   if (raw) sheet[id] = raw; else delete sheet[id];
   sheetRender();
   sheetSave();
@@ -1124,11 +1264,12 @@ function sheetClear() {
     return;
   }
   sheetClearArmed = 0;
-  sheet = {}; sheetRender(); sheetSave(); sheetShowBar();
+  sheet = {}; sheetUndo = null; sheetRender(); sheetSave(); sheetShowBar(); sheetPaintSel();
   hint.innerHTML = SHEET_HINT;
 }
 
-// ---- formula engine: only whitelisted tokens ever reach Function()
+// ---- formula engine: a small Excel-style parser and evaluator (no eval, no Function)
+// Precedence follows Excel: negation > % > ^ (left to right) > * / > + - > & > comparisons.
 function sheetParseNumber(s) {
   let t = s.replace(/[$,\s]/g, "");
   let neg = false, pct = false;
@@ -1139,6 +1280,7 @@ function sheetParseNumber(s) {
   if (pct) n /= 100;
   return neg ? -n : n;
 }
+let sheetMemo = null;   // per-render cache, so a long column of formulas is evaluated once
 function sheetValue(id, seen) {
   const raw = sheet[id];
   if (raw === undefined || raw === "") return 0;
@@ -1146,65 +1288,279 @@ function sheetValue(id, seen) {
     const n = sheetParseNumber(raw);
     return n === null ? raw : n;
   }
+  if (sheetMemo && sheetMemo.has(id)) { const m = sheetMemo.get(id); if (m.err) throw m.err; return m.v; }
   if (seen.has(id)) throw new Error("#CYCLE");
   seen.add(id);
-  const v = sheetEval(raw.slice(1), seen);
+  let v, err = null;
+  try { v = sheetEval(raw.slice(1), seen); } catch (e) { err = e; }
   seen.delete(id);
+  if (sheetMemo && !(err && err.message === "#CYCLE")) sheetMemo.set(id, err ? { err } : { v });
+  if (err) throw err;
   return v;
 }
-function sheetNum(id, seen) {
-  const v = sheetValue(id, seen);
-  return typeof v === "number" ? v : 0;   // text counts as 0, like Excel inside SUM
+function sheetErr(code) { return new Error(code); }
+function sheetRefId(s) {
+  const m = /^\$?([A-Z]{1,3})\$?(\d+)$/.exec(s);
+  if (!m) return null;
+  const c = SHEET_COLS.indexOf(m[1]), r = parseInt(m[2], 10);
+  return (c < 0 || r < 1 || r > SHEET_ROWS) ? "#REF" : SHEET_COLS[c] + r;
+}
+function sheetTokens(src) {
+  const toks = [];
+  let i = 0;
+  while (i < src.length) {
+    const ch = src[i], rest = src.slice(i);
+    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") { i++; continue; }
+    if (ch === '"') {
+      let j = i + 1, s = "";
+      for (;;) {
+        if (j >= src.length) throw sheetErr("#ERROR");
+        if (src[j] === '"') { if (src[j + 1] === '"') { s += '"'; j += 2; continue; } break; }
+        s += src[j++];
+      }
+      toks.push({ t: "str", v: s }); i = j + 1; continue;
+    }
+    let m = /^(\d+\.?\d*|\.\d+)(e[+-]?\d+)?/i.exec(rest);
+    if (m) { toks.push({ t: "num", v: parseFloat(m[0]) }); i += m[0].length; continue; }
+    m = /^#REF!?/i.exec(rest);
+    if (m) { toks.push({ t: "err", v: "#REF" }); i += m[0].length; continue; }
+    m = /^[$A-Za-z][$A-Za-z0-9.]*/.exec(rest);
+    if (m) { toks.push({ t: "id", v: m[0].toUpperCase() }); i += m[0].length; continue; }
+    const two = src.substr(i, 2);
+    if (two === "<=" || two === ">=" || two === "<>") { toks.push({ t: "op", v: two }); i += 2; continue; }
+    if ("+-*/^%&=<>(),:".indexOf(ch) >= 0) { toks.push({ t: "op", v: ch }); i++; continue; }
+    throw sheetErr("#NAME");
+  }
+  return toks;
+}
+function sheetParse(src) {
+  const toks = sheetTokens(src.replace(/−/g, "-"));
+  let p = 0;
+  const isOp = (v) => p < toks.length && toks[p].t === "op" && toks[p].v === v;
+  const fail = () => { throw sheetErr("#ERROR"); };
+  const CMP = ["=", "<>", "<", ">", "<=", ">="];
+  function cmp() { let l = cat(); while (p < toks.length && toks[p].t === "op" && CMP.indexOf(toks[p].v) >= 0) { const op = toks[p++].v; l = { k: "bin", op, l, r: cat() }; } return l; }
+  function cat() { let l = add(); while (isOp("&")) { p++; l = { k: "bin", op: "&", l, r: add() }; } return l; }
+  function add() { let l = mul(); while (isOp("+") || isOp("-")) { const op = toks[p++].v; l = { k: "bin", op, l, r: mul() }; } return l; }
+  function mul() { let l = pow(); while (isOp("*") || isOp("/")) { const op = toks[p++].v; l = { k: "bin", op, l, r: pow() }; } return l; }
+  function pow() { let l = una(); while (isOp("^")) { p++; l = { k: "bin", op: "^", l, r: una() }; } return l; }
+  function una() { if (isOp("-") || isOp("+")) { const op = toks[p++].v; return { k: "un", op, x: una() }; } return pct(); }
+  function pct() { let x = prim(); while (isOp("%")) { p++; x = { k: "pct", x }; } return x; }
+  function prim() {
+    const tk = toks[p++];
+    if (!tk) fail();
+    if (tk.t === "num" || tk.t === "str") return { k: "lit", v: tk.v };
+    if (tk.t === "err") return { k: "err", v: tk.v };
+    if (tk.t === "op" && tk.v === "(") { const x = cmp(); if (!isOp(")")) fail(); p++; return x; }
+    if (tk.t !== "id") fail();
+    if (isOp("(")) {
+      p++;
+      const args = [];
+      if (!isOp(")")) for (;;) { args.push(cmp()); if (isOp(",")) { p++; continue; } break; }
+      if (!isOp(")")) fail();
+      p++;
+      if (!Object.prototype.hasOwnProperty.call(SHEET_FN, tk.v)) throw sheetErr("#NAME");
+      return { k: "fn", name: tk.v, args };
+    }
+    if (tk.v === "TRUE" || tk.v === "FALSE") return { k: "lit", v: tk.v === "TRUE" };
+    const a = sheetRefId(tk.v);
+    if (!a) throw sheetErr("#NAME");
+    if (isOp(":")) {
+      p++;
+      const t2 = toks[p++], b = t2 && t2.t === "id" ? sheetRefId(t2.v) : null;
+      if (!b) fail();
+      if (a === "#REF" || b === "#REF") return { k: "err", v: "#REF" };
+      return { k: "range", a, b };
+    }
+    return a === "#REF" ? { k: "err", v: "#REF" } : { k: "ref", id: a };
+  }
+  const ast = cmp();
+  if (p !== toks.length) fail();
+  return ast;
+}
+function sheetScalar(v) { if (Array.isArray(v)) throw sheetErr("#VALUE"); return v; }
+function sheetToNum(v) {
+  v = sheetScalar(v);
+  if (typeof v === "number") return v;
+  if (typeof v === "boolean") return v ? 1 : 0;
+  const n = sheetParseNumber(String(v));
+  if (n === null) throw sheetErr("#VALUE");
+  return n;
+}
+function sheetToText(v) {
+  v = sheetScalar(v);
+  if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
+  if (typeof v === "number") return String(Number(v.toPrecision(15)));
+  return v;
+}
+function sheetCompare(a, b, op) {
+  a = sheetScalar(a); b = sheetScalar(b);
+  const rank = (v) => typeof v === "number" ? 0 : typeof v === "string" ? 1 : 2;
+  let c;
+  if (rank(a) !== rank(b)) c = rank(a) - rank(b);
+  else if (typeof a === "string") { const x = a.toUpperCase(), y = b.toUpperCase(); c = x < y ? -1 : x > y ? 1 : 0; }
+  else { const x = Number(Number(a).toPrecision(15)), y = Number(Number(b).toPrecision(15)); c = x < y ? -1 : x > y ? 1 : 0; }
+  return op === "=" ? c === 0 : op === "<>" ? c !== 0 : op === "<" ? c < 0 : op === ">" ? c > 0 : op === "<=" ? c <= 0 : c >= 0;
+}
+function sheetRangeValues(a, b, seen) {
+  const c1 = SHEET_COLS.indexOf(a[0]), r1 = parseInt(a.slice(1), 10), c2 = SHEET_COLS.indexOf(b[0]), r2 = parseInt(b.slice(1), 10);
+  const out = [];
+  for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++)
+    for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) {
+      const id = SHEET_COLS[c] + r;
+      out.push(sheet[id] === undefined || sheet[id] === "" ? null : sheetValue(id, seen));   // blanks stay blank, as in Excel
+    }
+  return out;
+}
+function sheetEvalNode(n, seen) {
+  switch (n.k) {
+    case "lit": return n.v;
+    case "err": throw sheetErr(n.v);
+    case "ref": return sheetValue(n.id, seen);
+    case "range": return sheetRangeValues(n.a, n.b, seen);
+    case "un": { const x = sheetToNum(sheetEvalNode(n.x, seen)); return n.op === "-" ? -x : x; }
+    case "pct": return sheetToNum(sheetEvalNode(n.x, seen)) / 100;
+    case "fn": return sheetCall(n, seen);
+    case "bin": {
+      const a = sheetEvalNode(n.l, seen), b = sheetEvalNode(n.r, seen);
+      switch (n.op) {
+        case "+": return sheetToNum(a) + sheetToNum(b);
+        case "-": return sheetToNum(a) - sheetToNum(b);
+        case "*": return sheetToNum(a) * sheetToNum(b);
+        case "/": { const d = sheetToNum(b); if (d === 0) throw sheetErr("#DIV/0"); return sheetToNum(a) / d; }
+        case "^": { const x = sheetToNum(a), y = sheetToNum(b); if (x === 0 && y <= 0) throw sheetErr(y === 0 ? "#NUM" : "#DIV/0"); return Math.pow(x, y); }
+        case "&": return sheetToText(a) + sheetToText(b);
+        default: return sheetCompare(a, b, n.op);
+      }
+    }
+  }
+  throw sheetErr("#ERROR");
+}
+function sheetCall(n, seen) {
+  if (n.name === "IF") {   // only the chosen branch is evaluated, as in Excel
+    if (n.args.length < 2 || n.args.length > 3) throw sheetErr("#ERROR");
+    let c = sheetScalar(sheetEvalNode(n.args[0], seen));
+    if (typeof c === "string") { const u = c.toUpperCase(); if (u !== "TRUE" && u !== "FALSE") throw sheetErr("#VALUE"); c = u === "TRUE"; }
+    if (typeof c === "number" ? c !== 0 : c) return sheetEvalNode(n.args[1], seen);
+    return n.args.length === 3 ? sheetEvalNode(n.args[2], seen) : false;
+  }
+  return SHEET_FN[n.name](n.args.map(a => sheetEvalNode(a, seen)));
+}
+// numbers from arguments: inside ranges, text, TRUE/FALSE and blanks are skipped (as in Excel)
+function sheetNums(args) {
+  const out = [];
+  for (const x of args) {
+    if (Array.isArray(x)) { for (const y of x) if (typeof y === "number") out.push(y); }
+    else out.push(sheetToNum(x));
+  }
+  return out;
+}
+function sheetArg(a, i) { if (a[i] === undefined) throw sheetErr("#ERROR"); return sheetToNum(a[i]); }
+function sheetOpt(a, i, d) { return a[i] === undefined ? d : sheetToNum(a[i]); }
+function sheetRound(x, d, up) {
+  d = Math.trunc(d);
+  const f = Math.pow(10, d), s = x < 0 ? -1 : 1;
+  const y = Number((Math.abs(x) * f).toPrecision(15));
+  return s * (up ? Math.ceil(y) : Math.round(y)) / f;
+}
+// RATE: Newton's method from the guess, then a bracketed bisection if Newton does not settle
+function sheetSolve(f, guess, scale) {
+  let x = guess;
+  for (let i = 0; i < 100 && isFinite(x) && x > -1; i++) {
+    const y = f(x), h = 1e-6 * Math.max(1e-4, Math.abs(x)), d = (f(x + h) - f(x - h)) / (2 * h);
+    if (!isFinite(y) || !isFinite(d) || d === 0) break;
+    const nx = x - y / d;
+    if (Math.abs(nx - x) < 1e-13 * Math.max(1, Math.abs(x)) && Math.abs(f(nx)) <= 1e-7 * scale) return nx;
+    x = nx;
+  }
+  const grid = [-0.99, -0.9, -0.5, -0.2, -0.1, -0.05, -0.01, 0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10];
+  for (let k = 0; k + 1 < grid.length; k++) {
+    let lo = grid[k], hi = grid[k + 1], flo = f(lo);
+    const fhi = f(hi);
+    if (!isFinite(flo) || !isFinite(fhi) || flo * fhi > 0) continue;
+    for (let i = 0; i < 200; i++) {
+      const mid = (lo + hi) / 2, fm = f(mid);
+      if (fm === 0 || hi - lo < 1e-15) return mid;
+      if (flo * fm < 0) { hi = mid; } else { lo = mid; flo = fm; }
+    }
+    return (lo + hi) / 2;
+  }
+  throw sheetErr("#NUM");
 }
 const SHEET_FN = {
-  SUM: a => a.reduce((s, x) => s + x, 0),
-  AVERAGE: a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0,
-  MIN: a => Math.min(...a),
-  MAX: a => Math.max(...a),
-  ROUND: a => { const f = Math.pow(10, a[1] || 0); return Math.round(a[0] * f) / f; },
-  ABS: a => Math.abs(a[0]),
+  SUM: (a) => sheetNums(a).reduce((s, x) => s + x, 0),
+  AVERAGE: (a) => { const v = sheetNums(a); if (!v.length) throw sheetErr("#DIV/0"); return v.reduce((s, x) => s + x, 0) / v.length; },
+  MIN: (a) => { const v = sheetNums(a); return v.length ? Math.min(...v) : 0; },
+  MAX: (a) => { const v = sheetNums(a); return v.length ? Math.max(...v) : 0; },
+  ROUND: (a) => sheetRound(sheetArg(a, 0), sheetOpt(a, 1, 0), false),
+  ROUNDUP: (a) => sheetRound(sheetArg(a, 0), sheetOpt(a, 1, 0), true),
+  INT: (a) => Math.floor(sheetArg(a, 0)),
+  ABS: (a) => Math.abs(sheetArg(a, 0)),
+  EXP: (a) => Math.exp(sheetArg(a, 0)),
+  IF: null,   // evaluated lazily in sheetCall
+  SUMPRODUCT: (a) => {
+    if (!a.length) throw sheetErr("#ERROR");
+    const arrs = a.map(x => Array.isArray(x) ? x : [sheetToNum(x)]), n = arrs[0].length;
+    if (arrs.some(x => x.length !== n)) throw sheetErr("#VALUE");
+    let s = 0;
+    for (let i = 0; i < n; i++) { let p = 1; for (const x of arrs) p *= typeof x[i] === "number" ? x[i] : 0; s += p; }
+    return s;
+  },
+  PMT: (a) => {
+    const r = sheetArg(a, 0), n = sheetArg(a, 1), pv = sheetArg(a, 2), fv = sheetOpt(a, 3, 0), t = sheetOpt(a, 4, 0) ? 1 : 0;
+    if (n === 0) throw sheetErr("#NUM");
+    if (r === 0) return -(pv + fv) / n;
+    const g = Math.pow(1 + r, n);
+    return -(r * (fv + pv * g)) / ((1 + r * t) * (g - 1));
+  },
+  FV: (a) => {
+    const r = sheetArg(a, 0), n = sheetArg(a, 1), pmt = sheetArg(a, 2), pv = sheetOpt(a, 3, 0), t = sheetOpt(a, 4, 0) ? 1 : 0;
+    if (r === 0) return -(pv + pmt * n);
+    const g = Math.pow(1 + r, n);
+    return -(pv * g + pmt * (1 + r * t) * (g - 1) / r);
+  },
+  PV: (a) => {
+    const r = sheetArg(a, 0), n = sheetArg(a, 1), pmt = sheetArg(a, 2), fv = sheetOpt(a, 3, 0), t = sheetOpt(a, 4, 0) ? 1 : 0;
+    if (r === 0) return -(fv + pmt * n);
+    const g = Math.pow(1 + r, n);
+    return -(fv + pmt * (1 + r * t) * (g - 1) / r) / g;
+  },
+  NPER: (a) => {
+    const r = sheetArg(a, 0), pmt = sheetArg(a, 1), pv = sheetArg(a, 2), fv = sheetOpt(a, 3, 0), t = sheetOpt(a, 4, 0) ? 1 : 0;
+    if (r === 0) { if (pmt === 0) throw sheetErr("#NUM"); return -(pv + fv) / pmt; }
+    const k = pmt * (1 + r * t), q = (k - fv * r) / (k + pv * r);
+    if (!(q > 0) || r <= -1) throw sheetErr("#NUM");
+    return Math.log(q) / Math.log(1 + r);
+  },
+  RATE: (a) => {
+    const n = sheetArg(a, 0), pmt = sheetArg(a, 1), pv = sheetArg(a, 2), fv = sheetOpt(a, 3, 0), t = sheetOpt(a, 4, 0) ? 1 : 0, guess = sheetOpt(a, 5, 0.1);
+    if (n <= 0) throw sheetErr("#NUM");
+    const f = (x) => { if (Math.abs(x) < 1e-10) return pv + pmt * n + fv; const g = Math.pow(1 + x, n); return pv * g + pmt * (1 + x * t) * (g - 1) / x + fv; };
+    return sheetSolve(f, guess, Math.max(1, Math.abs(pv) + Math.abs(pmt) * n + Math.abs(fv)));
+  },
 };
-const SHEET_FN_RE = new RegExp("\\b(" + Object.keys(SHEET_FN).join("|") + ")\\(", "g");
 function sheetEval(expr, seen) {
-  let e = expr.toUpperCase().replace(/\s+/g, "");
-  // ranges -> [n,n,...]
-  e = e.replace(/([A-Z])([0-9]{1,2}):([A-Z])([0-9]{1,2})/g, (m, c1, r1, c2, r2) => {
-    const cs = [SHEET_COLS.indexOf(c1), SHEET_COLS.indexOf(c2)].sort((a, b) => a - b);
-    const rs = [parseInt(r1, 10), parseInt(r2, 10)].sort((a, b) => a - b);
-    const vals = [];
-    for (let c = cs[0]; c <= cs[1]; c++) for (let r = rs[0]; r <= rs[1]; r++) vals.push(sheetNum(SHEET_COLS[c] + r, seen));
-    return "[" + vals.join(",") + "]";
-  });
-  // single cells -> (n)
-  e = e.replace(/\b([A-Z])([0-9]{1,2})\b/g, (m, c, r) => {
-    const n = parseInt(r, 10);
-    if (n < 1 || n > SHEET_ROWS) throw new Error("#REF");
-    return "(" + sheetNum(c + r, seen) + ")";
-  });
-  e = e.replace(/(\d+(?:\.\d+)?)%/g, "($1/100)").replace(/\^/g, "**");
-  const withFns = e.replace(SHEET_FN_RE, "F.$1(");
-  const check = e.replace(SHEET_FN_RE, "(");
-  if (!/^[0-9+\-*/().,\[\]e]*$/.test(check)) throw new Error("#NAME");
-  const F = {};
-  for (const k of Object.keys(SHEET_FN)) F[k] = (...args) => SHEET_FN[k](args.flat());
-  let v;
-  try { v = Function("F", '"use strict"; return (' + withFns + ");")(F); }
-  catch (err) { throw new Error("#ERROR"); }
-  if (typeof v !== "number" || !isFinite(v)) throw new Error("#DIV/0");
+  const v = sheetEvalNode(sheetParse(expr), seen);
+  if (Array.isArray(v)) throw sheetErr("#VALUE");
+  if (typeof v === "number" && !isFinite(v)) throw sheetErr("#NUM");
   return v;
 }
 function sheetFormat(v) {
-  return typeof v === "number" ? v.toLocaleString(undefined, { maximumFractionDigits: 4 }) : String(v);
+  if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
+  return typeof v === "number" ? (v === 0 ? 0 : v).toLocaleString(undefined, { maximumFractionDigits: 4 }) : String(v);
 }
 function sheetRender() {
-  for (const c of SHEET_COLS) for (let r = 1; r <= SHEET_ROWS; r++) {
-    const id = c + r, inp = sheetCellInput(id);
-    if (!inp || document.activeElement === inp) continue;
-    inp.classList.remove("err");
-    if (sheet[id] === undefined) { inp.value = ""; continue; }
-    try { inp.value = sheetFormat(sheetValue(id, new Set())); }
-    catch (err) { inp.value = String(err.message).startsWith("#") ? err.message : "#ERROR"; inp.classList.add("err"); }
-  }
+  sheetMemo = new Map();
+  try {
+    for (const c of SHEET_COLS) for (let r = 1; r <= SHEET_ROWS; r++) {
+      const id = c + r, inp = sheetCellInput(id);
+      if (!inp || document.activeElement === inp) continue;
+      inp.classList.remove("err");
+      if (sheet[id] === undefined) { inp.value = ""; continue; }
+      try { inp.value = sheetFormat(sheetValue(id, new Set())); }
+      catch (err) { inp.value = String(err.message).startsWith("#") ? err.message : "#ERROR"; inp.classList.add("err"); }
+    }
+  } finally { sheetMemo = null; }
 }
 function sheetSave() {
   if (!currentState) return;
