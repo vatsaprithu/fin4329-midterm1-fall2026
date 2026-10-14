@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en-US">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FIN4329 saved exam-file recovery</title>
+<style>
+  * {box-sizing:border-box}
+  body {margin:0;background:#f4f6f8;color:#17212b;font:18px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+  main {max-width:820px;margin:28px auto;padding:0 18px 32px}
+  .card {background:white;border:1px solid #4b5563;border-radius:8px;padding:22px;margin:18px 0}
+  h1 {font-size:1.8rem;line-height:1.2;margin:0 0 18px} h2 {font-size:1.25rem;margin:0 0 12px}
+  p {margin:12px 0} label {display:block;font-weight:700;margin-top:16px}
+  input {width:100%;padding:12px;border:2px solid #374151;border-radius:4px;font:inherit;background:white;color:#111827}
+  button {font:inherit;font-weight:700;border:2px solid #123b67;border-radius:5px;padding:12px 18px;background:#123b67;color:white;margin-top:18px;cursor:pointer}
+  button:disabled {background:#e5e7eb;border-color:#6b7280;color:#374151;cursor:default}
+  a {color:#123b67} :focus-visible {outline:4px solid #b45309;outline-offset:3px}
+  .notice {background:#fff3cd;border-left:5px solid #8a4b00;padding:12px 16px}
+  #recoveryStatus {border:2px solid #4b5563;padding:14px;min-height:56px;white-space:pre-wrap;overflow-wrap:anywhere}
+  #recoveryStatus.error {border-color:#9b1c1c;color:#7f1d1d;background:#fff1f1}
+  #exportActions {overflow-wrap:anywhere} #exportActions a,#exportActions button {max-width:100%}
+  [hidden] {display:none!important} code {font-size:1em}
+  @media(max-width:600px) {main{margin-top:16px}.card{padding:16px}h1{font-size:1.5rem}button{width:100%}}
+</style>
+</head>
+<body>
+<main>
+  <section class="card" aria-labelledby="title">
+    <h1 id="title">FIN4329 saved exam-file recovery</h1>
+    <p>Use the original exam device and the same Safe Exam Browser profile. This page reads your finalized Midterm 1 record and prepares its original answers, score, and submission details for download.</p>
+    <p class="notice">Keep the browser’s saved data on this device. Enter the same UTEP email used in the exam and the original exam access code. Your saved record supplies your name.</p>
+    <p>The export is generated locally. Nothing is uploaded from this page to an outside service or an AI tool. After you exit SEB and confirm the file exists, upload it unchanged to UTEP Blackboard.</p>
+  </section>
+  <section class="card" aria-labelledby="recordHeading">
+    <h2 id="recordHeading">Find your finalized record</h2>
+    <label for="recoveryEmail">Original UTEP exam email</label>
+    <input id="recoveryEmail" type="email" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Your original @miners.utep.edu or @utep.edu email">
+    <button id="loadRecoveryBtn" type="button">Find my saved record</button>
+    <label for="recoveryCode">Original exam access code</label>
+    <input id="recoveryCode" type="password" autocomplete="off" aria-describedby="codeHelp">
+    <p id="codeHelp">The code opens the existing file integrity key so the recovered export can use the original grading format.</p>
+    <button id="prepareRecoveryBtn" type="button" disabled>Prepare my recovered exam file</button>
+    <p id="recoveryStatus" role="status" aria-live="polite">Open the recovery launch file in Safe Exam Browser, then find your saved record.</p>
+    <div id="exportActions" aria-label="Recovered file download controls"></div>
+  </section>
+  <section class="card" aria-labelledby="downloadHeading">
+    <h2 id="downloadHeading">Confirm the download</h2>
+    <p>A download request leaves the final confirmation to you. If the primary download is blocked, use the JSON fallback provided with the download controls. A repeated download can add a number to the filename.</p>
+    <p>Quit SEB using its Quit control and enter <strong>recovery4329</strong>. This password applies to the recovery launch file. On Windows use Ctrl+Q; on Mac use Command+Q; on iPad use SEB’s Quit control.</p>
+    <p>On Mac or Windows, look in your <strong>Downloads</strong> folder. On iPad, open <strong>Files → On My iPad → SafeExamBrowser</strong>, or the location shown by SEB. Confirm that the JSON file is present before uploading it unchanged to Blackboard.</p>
+    <p>Use a current institution-supported SEB release. Generated blob downloads in the modern WebView require macOS 11.3 or later, or iPadOS 14.5 or later. Tell the instructor if both download methods fail.</p>
+  </section>
+</main>
+<script>
+'use strict';
+const RECOVERY_SEALED_KEY = 'INTi2fEIcHwATd+cnengiMFsf29UKpLltirZgYBhngcS4TXHIEUUtvHqd7dHlVtEj49aCT7LMPCnX/lvqaIPj7BzLwAgrwEtOci6TvabktFQWSH9Z1hCzLiqVcgjwLvcBj3beAVJdXEvrySWJYtnV73ycvD349Ks+KsZmw==';
+const ORIGINAL_EXAM = 'FIN4329 Midterm 1 Fall 2026';
+const ORIGINAL_STORAGE_PREFIX = 'fin4329_mt1_fa26_';
+let loadedState = null, loadedKey = null, loadedRaw = null, busy = false;
+const byId = id => document.getElementById(id);
+const normalizeEmail = value => String(value).trim().toLowerCase();
+function storageKey(email) {
+  return ORIGINAL_STORAGE_PREFIX + btoa(unescape(encodeURIComponent(normalizeEmail(email)))).replace(/[^a-zA-Z0-9]/g, '');
+}
+function setStatus(message, error=false) {
+  byId('recoveryStatus').textContent=message;
+  byId('recoveryStatus').classList.toggle('error',error);
+}
+function requireSEB() {
+  if(!/SEB\//i.test(navigator.userAgent)) throw Error('Open the recovery .seb launch file in Safe Exam Browser on your original exam device.');
+}
+function clearLoaded() {
+  loadedState=null;loadedKey=null;loadedRaw=null;
+  byId('prepareRecoveryBtn').disabled=true;byId('exportActions').replaceChildren();
+}
+function loadRecovery() {
+  if(busy)return false;
+  clearLoaded();
+  try {
+    requireSEB();
+    const email=normalizeEmail(byId('recoveryEmail').value);
+    if(!/^[^\s@]+@(miners\.)?utep\.edu$/.test(email)) throw Error('Enter the same UTEP email used in your exam.');
+    const key=storageKey(email);
+    let raw;
+    try {raw=localStorage.getItem(key);} catch {throw Error('The browser could not read its saved data. Keep this device and profile intact and contact the instructor.');}
+    if(!raw) throw Error('No saved exam record was found for that email in this browser profile. Check the original email, device, and SEB profile, then contact the instructor.');
+    let state;
+    try {state=JSON.parse(raw);} catch {throw Error('The saved record could not be read. Keep this browser profile intact and contact the instructor.');}
+    if(!state || state.exam!==ORIGINAL_EXAM || normalizeEmail(state.email)!==email) throw Error('The saved record does not match this exam and email. Contact the instructor.');
+    if(state.submitted!==true) throw Error('The saved record is unfinished. This recovery page exports finalized records only. Contact the instructor while preserving this browser profile.');
+    canonicalRecord(state); // Validate the original timestamp before enabling export.
+    loadedState=state;loadedKey=key;loadedRaw=raw;
+    byId('prepareRecoveryBtn').disabled=false;
+    setStatus('Finalized record found for '+String(state.name)+'. Original submission: '+String(state.submittedAt)+'. Enter the original exam access code and prepare your export.');
+    return true;
+  } catch(error) {setStatus(error.message,true);return false;}
+}
+function canonicalRecord(s) {
+  return {
+    exam:s.exam,name:s.name,email:s.email,
+    startTime:new Date(s.startTime).toISOString(),submittedAt:s.submittedAt,
+    autoSubmitted:!!s.autoSubmitted,answers:s.answers,order:s.order,
+    correctCount:s.correctCount,total:s.total,scorePct:s.scorePct,
+    events:s.events||[]
+  };
+}
+async function sha256Hex(text) {
+  const value=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(value),byte=>byte.toString(16).padStart(2,'0')).join('');
+}
+async function decryptRecoveryKey(code) {
+  const bytes=Uint8Array.from(atob(RECOVERY_SEALED_KEY),char=>char.charCodeAt(0));
+  if(bytes.length<44)throw Error('Invalid recovery key package.');
+  const material=await crypto.subtle.importKey('raw',new TextEncoder().encode(code),'PBKDF2',false,['deriveKey']);
+  const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt:bytes.slice(0,16),iterations:200000,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['decrypt']);
+  const clear=await crypto.subtle.decrypt({name:'AES-GCM',iv:bytes.slice(16,28)},key,bytes.slice(28));
+  const payload=JSON.parse(new TextDecoder().decode(clear));
+  if(typeof payload.integrity!=='string'||!payload.integrity)throw Error('Invalid recovery integrity key.');
+  return payload.integrity;
+}
+async function prepareRecovery() {
+  if(busy)return false;
+  byId('exportActions').replaceChildren();
+  try {
+    requireSEB();
+    if(!loadedState||!loadedKey)throw Error('Find your finalized record first.');
+    if(normalizeEmail(byId('recoveryEmail').value)!==normalizeEmail(loadedState.email))throw Error('The email changed. Find the saved record again before exporting.');
+    if(localStorage.getItem(loadedKey)!==loadedRaw)throw Error('The saved record changed after it was loaded. Find the record again before exporting.');
+    const code=byId('recoveryCode').value.trim();
+    if(!code)throw Error('Enter the original exam access code to prepare the export.');
+    busy=true;byId('loadRecoveryBtn').disabled=true;byId('prepareRecoveryBtn').disabled=true;
+    setStatus('Preparing your saved record…');
+    let integrity;
+    try {integrity=await decryptRecoveryKey(code);} catch {throw Error('The access code could not open the recovery key. Check the original exam access code and try again. Your saved record remains available.');}
+    const record=canonicalRecord(loadedState);
+    record.integrity=await sha256Hex(integrity+'|'+JSON.stringify(record));
+    record.downloadedAt=new Date().toISOString();
+    const filename='FIN4329_Midterm1_'+String(loadedState.name).replace(/[^A-Za-z0-9]+/g,'_')+'.json';
+    const issued=await requestJSONFile(filename,JSON.stringify(record,null,2),byId('exportActions'),true);
+    byId('recoveryCode').value='';
+    setStatus('Recovered export prepared. Use the download controls below. After exiting SEB, confirm that the JSON file exists in Downloads on Mac/Windows or Files on iPad, then upload it unchanged to Blackboard. This page cannot verify completion on disk.');
+    return issued!==false;
+  } catch(error) {setStatus(error.message,true);return false;}
+  finally {busy=false;byId('loadRecoveryBtn').disabled=false;byId('prepareRecoveryBtn').disabled=!loadedState;}
+}
+byId('loadRecoveryBtn').addEventListener('click',loadRecovery);
+byId('prepareRecoveryBtn').addEventListener('click',prepareRecovery);
+byId('recoveryEmail').addEventListener('input',()=>{if(!busy)clearLoaded();});
+if(!/SEB\//i.test(navigator.userAgent))setStatus('Open the recovery .seb launch file in Safe Exam Browser on your original exam device.',true);
+// JSON export stays on this device. Genuine links remain usable if an automatic
+// request is refused. Blob objects are kept alive for this document's lifetime;
+// early revocation can race native WebKit's asynchronous download handling.
+function jsonDataURL(text) {
+  const bytes=new TextEncoder().encode(text);
+  let binary='';for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
+  return 'data:application/json;charset=utf-8;base64,'+encodeURIComponent(btoa(binary));
+}
+function requestJSONFile(filename,text,host,autoRequest=true) {
+  if(!host)throw Error('Download controls are unavailable. Keep this page open and contact the proctor.');
+  let controls=document.getElementById('jsonDownloadAlternatives');
+  if(!controls){controls=document.createElement('div');controls.id='jsonDownloadAlternatives';host.appendChild(controls);}
+  controls.replaceChildren();
+  const note=document.createElement('p');
+  note.textContent='The file is prepared locally. If the automatic request does not save it, click Save JSON below. If that is blocked, try the compatibility download. Confirm the file exists after authorized exit; this page cannot verify a disk save.';
+  controls.appendChild(note);
+  const blobURL=URL.createObjectURL(new Blob([text],{type:'application/json'}));
+  const primary=document.createElement('a');primary.id='jsonDownloadLink';primary.href=blobURL;primary.download=filename;primary.textContent='Save JSON';
+  const alternate=document.createElement('a');alternate.id='jsonCompatibilityLink';alternate.href=jsonDataURL(text);alternate.download=filename;alternate.textContent='Compatibility JSON download';
+  for(const link of [primary,alternate]){
+    link.style.cssText='display:inline-block;margin:0 12px 12px 0;padding:12px;border:2px solid #111;color:#111;background:#fff;font-weight:bold;text-decoration:underline;';
+    link.setAttribute('aria-label',link.textContent+' — '+filename);controls.appendChild(link);
+  }
+  if(autoRequest)primary.click();
+  return {filename,blobURL,compatibilityURL:alternate.href,requested:!!autoRequest};
+}
+
+</script>
+</body>
+</html>

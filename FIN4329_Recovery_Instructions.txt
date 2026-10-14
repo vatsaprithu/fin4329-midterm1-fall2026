@@ -1,0 +1,47 @@
+FIN 4329 - Recovering a finalized exam submission
+Updated October 13, 2026
+
+This recovery exports answers already finalized on your original device. It does
+not reopen the exam, change answers, or create a new attempt. Recovery succeeds
+only if the original SEB browser still has your saved finalized answers.
+
+1. Keep the SAME device, SEB application/browser profile and original UTEP email.
+   Do not clear browser data, uninstall/reinstall SEB, or switch browsers/devices.
+   If your exam is still open, first ask the proctor for guidance and authorized
+   exit. Do not force-quit an unfinished exam.
+
+2. Outside SEB, download this NEW recovery launch file and open it with SEB:
+   https://vatsaprithu.github.io/fin4311-midterm1-fall2026/FIN4329_MT1_Recovery.seb
+   Use the institution-supported current SEB version. Generated file downloads
+   require Apple's modern browser engine and macOS 11.3+ or iOS/iPadOS 14.5+;
+   the SEB release itself may require a newer operating system. Consult IT if
+   the installed version does not meet current support requirements.
+
+3. Enter the original UTEP email and the ORIGINAL FIN 4329 student exam access
+   code announced in class. Contact course staff privately if you need it.
+   Select Load saved submission, then prepare/download your submission.
+   Missing or unfinished saved work cannot be exported by this recovery tool.
+   Report that message to the instructor; do not attempt to recreate answers.
+
+4. Use the Save JSON link. If it fails or shows URL blocked, try Compatibility
+   download. Both contain the same finalized record. Accept any legitimate
+   download/save prompt. A download request is not proof of a saved file.
+
+5. The quit password for this READ-ONLY recovery file is recovery4329.
+   It does not unlock an actual exam. Exit with SEB's Quit control.
+
+6. Check the saved .json file after exiting:
+   Windows or Mac: your Downloads folder.
+   iPad: Files > On My iPad > SafeExamBrowser (SEB's documents folder).
+   Check for FIN4329_Midterm1_*.json; repeated downloads may have a suffix.
+   Upload the file unchanged to the instructor's designated Blackboard slot.
+   Verify the upload receipt. Contact staff if the upload slot is unavailable.
+
+7. If no file appears, preserve the same device/profile and contact staff before
+   further troubleshooting. Report OS, SEB version, error text and the filename.
+   Omit names, answers and exam content from screenshots. JSON files and SEB
+   logs can contain student information; never paste/upload them to AI tools.
+
+This page has no automatic upload or server-side answer storage. Opening the
+recovery page in Safari/Chrome rather than the original SEB profile cannot
+recover SEB's saved answers. Course staff must verify successful receipt.

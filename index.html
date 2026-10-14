@@ -974,8 +974,8 @@ function renderSubmitted() {
     <div style="padding:16px; background:#fff8e1; border:2px solid var(--accent); border-radius:8px;">
       <h3 style="color:var(--err); margin-top:0;">⚠ REQUIRED: upload your exam file to Blackboard</h3>
       <ol style="font-size:14px; padding-left:22px; margin:8px 0;">
-        <li><strong>Click the button below.</strong> A file named <code>${fileName}</code> saves to your Downloads folder.</li>
-        ${IN_SEB ? `<li><strong>Click "Finish &amp; exit Safe Exam Browser"</strong>, which appears after the download.</li>` : ""}
+        <li><strong>Click the button below.</strong> This requests <code>${fileName}</code>. If needed, use Save JSON or Compatibility download. A request does not confirm disk saving.</li>
+        ${IN_SEB ? `<li><strong>Ask the proctor to authorize exit using SEB's Quit control.</strong> Then confirm the file in Downloads on Windows/Mac, or Files &gt; On My iPad &gt; SafeExamBrowser on iPad.</li>` : ""}
         <li><strong>Upload that file to the "Midterm 1 Exam File" assignment on Blackboard</strong> before you leave the room.</li>
       </ol>
       <div style="margin-top:14px; text-align:center;">
@@ -987,14 +987,13 @@ function renderSubmitted() {
       </p>
     </div>`;
   document.getElementById("downloadBtn").onclick = async () => {
-    await downloadResults(fileName);
-    if (IN_SEB && !document.getElementById("sebQuitBtn")) {
-      const q = document.createElement("div");
-      q.style.cssText = "margin-top:14px; text-align:center;";
-      q.innerHTML = `<p style="font-size:14px;">File saved to your Downloads folder. Now close Safe Exam Browser, open Blackboard in your normal browser, and upload the file.</p>
-        <a id="sebQuitBtn" href="${SEB_QUIT_URL}" style="display:inline-block; background:var(--err); color:#fff; padding:12px 24px; border-radius:8px; font-weight:700; text-decoration:none;">Finish &amp; exit Safe Exam Browser</a>`;
-      document.getElementById("nextStepBlock").appendChild(q);
-    }
+    try {
+      const requested=await downloadResults(fileName);
+      if(!requested)return;
+      let note=document.getElementById('downloadRequestStatus');
+      if(!note){note=document.createElement('p');note.id='downloadRequestStatus';note.setAttribute('role','status');document.getElementById('nextStepBlock').appendChild(note);}
+      note.textContent='Download requested; a disk save is not yet confirmed. If needed, use Save JSON or the compatibility link. Ask the proctor to authorize exit, then verify the file in Downloads on Windows/Mac or Files > On My iPad > Safe Exam Browser on iPad. Upload the unchanged JSON to Blackboard and verify the receipt before leaving.';
+    }catch(error){alert('Download preparation failed. Keep this page open and ask the proctor. '+error.message);}
   };
 }
 
@@ -1029,19 +1028,44 @@ async function downloadResults(fileName) {
   // to re-download (questions not decrypted), ask for the access code again.
   if (!EXAM) {
     const pwd = prompt("Enter the exam access code to download your file again:");
-    if (!pwd) return;
+    if (!pwd) return false;
     try { EXAM = await decryptExam(pwd.trim()); QUESTIONS = EXAM.questions; }
-    catch { alert("Incorrect access code."); return; }
+    catch { alert("Incorrect access code."); return false; }
   }
   const body = JSON.stringify(record);
   record.integrity = await sha256Hex(EXAM.integrity + "|" + body);
   record.downloadedAt = new Date().toISOString();
-  const blob = new Blob([JSON.stringify(record, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = fileName; a.click();
-  URL.revokeObjectURL(url);
+  requestJSONFile(fileName,JSON.stringify(record,null,2),document.getElementById('nextStepBlock'));
+  return true;
 }
+
+// JSON export stays on this device. Genuine links remain usable if an automatic
+// request is refused. Blob objects are kept alive for this document's lifetime;
+// early revocation can race native WebKit's asynchronous download handling.
+function jsonDataURL(text) {
+  const bytes=new TextEncoder().encode(text);
+  let binary='';for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
+  return 'data:application/json;charset=utf-8;base64,'+encodeURIComponent(btoa(binary));
+}
+function requestJSONFile(filename,text,host,autoRequest=true) {
+  if(!host)throw Error('Download controls are unavailable. Keep this page open and contact the proctor.');
+  let controls=document.getElementById('jsonDownloadAlternatives');
+  if(!controls){controls=document.createElement('div');controls.id='jsonDownloadAlternatives';host.appendChild(controls);}
+  controls.replaceChildren();
+  const note=document.createElement('p');
+  note.textContent='The file is prepared locally. If the automatic request does not save it, click Save JSON below. If that is blocked, try the compatibility download. Confirm the file exists after authorized exit; this page cannot verify a disk save.';
+  controls.appendChild(note);
+  const blobURL=URL.createObjectURL(new Blob([text],{type:'application/json'}));
+  const primary=document.createElement('a');primary.id='jsonDownloadLink';primary.href=blobURL;primary.download=filename;primary.textContent='Save JSON';
+  const alternate=document.createElement('a');alternate.id='jsonCompatibilityLink';alternate.href=jsonDataURL(text);alternate.download=filename;alternate.textContent='Compatibility JSON download';
+  for(const link of [primary,alternate]){
+    link.style.cssText='display:inline-block;margin:0 12px 12px 0;padding:12px;border:2px solid #111;color:#111;background:#fff;font-weight:bold;text-decoration:underline;';
+    link.setAttribute('aria-label',link.textContent+' — '+filename);controls.appendChild(link);
+  }
+  if(autoRequest)primary.click();
+  return {filename,blobURL,compatibilityURL:alternate.href,requested:!!autoRequest};
+}
+
 
 // =================== CALCULATOR ===================
 function calcAppend(s) { const inp = document.getElementById("calcInput"); inp.value += s; inp.focus(); calcTryEval(); }
@@ -1756,7 +1780,7 @@ function enforceKillDate() {
     quizActive = false;
     document.querySelector(".wrap").innerHTML = `
       <header class="banner"><h1>Exam Closed</h1>
-      <p>FIN 4329 Midterm Exam 1 closed on October 13, 2026. Contact your instructor with any questions.</p></header>`;
+      <p>FIN 4329 Midterm Exam 1 closed on October 13, 2026. Saved finalized answers can still be exported with the instructor's read-only recovery launch file. Keep the original device and Safe Exam Browser data. Contact your instructor for recovery instructions.</p></header>`;
     return true;
   }
   return false;
